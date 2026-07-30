@@ -1,0 +1,51 @@
+import 'dotenv/config';
+import { loadConfig } from './config.js';
+import { openDatabase } from './db/database.js';
+import { createGithubClient } from './github/auth.js';
+import { GithubWebhookHandler } from './github/webhook-handler.js';
+import { createLogger } from './logger.js';
+import { createHttpServer } from './app.js';
+import { createSlackApp } from './slack/create-slack-app.js';
+import { TaskRepository } from './tasks/task-repository.js';
+import { TaskService } from './tasks/task-service.js';
+
+async function main(): Promise<void> {
+  const config = loadConfig();
+  const logger = createLogger(config.logLevel);
+  const db = openDatabase(config.databasePath);
+  const tasks = new TaskRepository(db);
+  const github = createGithubClient({
+    appId: config.githubAppId,
+    installationId: config.githubInstallationId,
+    privateKey: config.githubPrivateKey,
+  });
+  const service = new TaskService(tasks, github, config.allowedRepositories, logger);
+  const slack = createSlackApp(config, { tasks, service, github, logger });
+  const webhookHandler = new GithubWebhookHandler(tasks, github, slack.client, logger);
+  const server = createHttpServer({
+    webhookSecret: config.githubWebhookSecret,
+    webhookHandler,
+    logger,
+  });
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ signal }, 'Shutting down');
+    await Promise.allSettled([slack.stop(), server.close()]);
+    db.close();
+  };
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+
+  await server.listen({ port: config.port, host: '0.0.0.0' });
+  await slack.start();
+  logger.info({ port: config.port }, 'Slack coding agent started');
+}
+
+main().catch((error) => {
+  // Config errors contain field names but never secret values.
+  console.error(error instanceof Error ? error.message : 'Fatal startup error');
+  process.exitCode = 1;
+});

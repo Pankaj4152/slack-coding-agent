@@ -1,0 +1,18 @@
+# The deployable workflow is templates/coding-agent.yml. Copy it into each target repository.
+name: Validate coding-agent template
+
+on:
+  pull_request:
+    paths:
+      - templates/coding-agent.yml
+
+permissions:
+  contents: read
+
+jobs:
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Confirm official Codex Action is configured
+        run: 'grep -F "uses: openai/codex-action@v1" templates/coding-agent.yml'

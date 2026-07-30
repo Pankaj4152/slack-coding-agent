@@ -1,0 +1,15 @@
+node_modules/
+.npm-cache/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+data/*
+!data/.gitkeep
+*.sqlite
+*.sqlite-*
+*.log
+.DS_Store
+codex-output.txt
+codex-prompt.txt

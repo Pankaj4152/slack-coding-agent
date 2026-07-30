@@ -1,0 +1,12 @@
+services:
+  slack-coding-agent:
+    build: .
+    env_file: .env
+    ports:
+      - '${PORT:-3000}:${PORT:-3000}'
+    volumes:
+      - slack-coding-agent-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  slack-coding-agent-data:
