@@ -1,4 +1,3 @@
-
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
