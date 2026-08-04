@@ -37,15 +37,15 @@ jobs:
             if (!/^[0-9a-f-]{36}$/i.test(metadata.taskId)) throw new Error('Invalid task ID');
           "
 
-      - name: Mark task working
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh issue edit "$ISSUE_NUMBER" --remove-label "agent-ready" --add-label "agent-working"
-
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Mark task working
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit "$ISSUE_NUMBER" --remove-label "agent-ready" --add-label "agent-working"
 
       - name: Build prompt from issue conversation
         env:
