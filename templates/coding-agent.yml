@@ -102,6 +102,7 @@ jobs:
           sandbox: workspace-write
           safety-strategy: drop-sudo
           allow-bots: true
+          allow-bot-users: pankaj-slack-coding-agent[bot]
           output-schema: |
             {
               "type": "object",
