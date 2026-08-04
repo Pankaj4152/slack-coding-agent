@@ -41,6 +41,8 @@ For clarification, the workflow comments with `<!-- agent-question -->` and appl
 
 `OPENAI_API_KEY` does **not** belong in this service's environment.
 
+By default, the service uses SQLite at `DATABASE_PATH`. For Render Free or multi-instance deployments, set `DATABASE_URL` to a PostgreSQL connection string (for example Supabase's Shared Pooler session-mode URL). When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
+
 ## Slack app setup
 
 Create a Slack app from scratch.
@@ -140,6 +142,22 @@ docker compose up --build
 ```
 
 The multistage image runs as the non-root `node` user. Compose persists `/app/data` in a named volume and the image health check calls `/health`.
+
+### Supabase/PostgreSQL option
+
+The application supports either SQLite or PostgreSQL. Create a Supabase project, click **Connect**, and use the **Shared Pooler session mode** connection string for an IPv4-only Render service. Add it as:
+
+```env
+DATABASE_URL=postgres://postgres.<project-ref>:<password>@aws-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+When `DATABASE_URL` is set, the service initializes PostgreSQL automatically and uses parameterized queries for task mappings and processed events. Do not use the Supabase anon or service-role API keys for this connection. Supabase documents session mode for persistent backend services and transaction mode for serverless workloads. See [Supabase database connections](https://supabase.com/docs/guides/database/connecting-to-postgres).
+
+To initialize the PostgreSQL schema without starting Slack or the webhook server, run:
+
+```bash
+npm run db:migrate
+```
 
 ## Usage
 

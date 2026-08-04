@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Octokit } from '@octokit/rest';
 import type { Logger } from 'pino';
 import { createAgentIssue } from '../github/issues.js';
-import type { TaskRepository } from './task-repository.js';
+import type { TaskStore } from './task-repository.js';
 import type { Task } from './task-types.js';
 
 interface CreateTaskInput {
@@ -19,7 +19,7 @@ export class TaskService {
   private readonly inFlight = new Map<string, Promise<Task>>();
 
   constructor(
-    private readonly tasks: TaskRepository,
+    private readonly tasks: TaskStore,
     private readonly github: Octokit,
     private readonly allowedRepositories: ReadonlySet<string>,
     private readonly logger: Logger,
@@ -30,7 +30,7 @@ export class TaskService {
   }
 
   async create(input: CreateTaskInput) {
-    const existing = this.tasks.findBySlackThread(
+    const existing = await this.tasks.findBySlackThread(
       input.workspaceId,
       input.channelId,
       input.threadTs,

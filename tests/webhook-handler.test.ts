@@ -7,10 +7,10 @@ import { TaskRepository } from '../src/tasks/task-repository.js';
 describe('GithubWebhookHandler', () => {
   let db: SqliteDatabase;
   let tasks: TaskRepository;
-  beforeEach(() => {
+  beforeEach(async () => {
     db = openDatabase(':memory:');
     tasks = new TaskRepository(db);
-    tasks.create({
+    await tasks.create({
       id: '123e4567-e89b-12d3-a456-426614174000',
       workspaceId: 'T1',
       channelId: 'C1',
@@ -57,7 +57,9 @@ describe('GithubWebhookHandler', () => {
     };
     await handler.handle('issue_comment', 'delivery-1', payload);
     await handler.handle('issue_comment', 'delivery-1', payload);
-    expect(tasks.findById('123e4567-e89b-12d3-a456-426614174000')?.status).toBe('needs_input');
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'needs_input',
+    );
     expect(postMessage).toHaveBeenCalledOnce();
   });
 
@@ -74,7 +76,9 @@ describe('GithubWebhookHandler', () => {
         head: { ref: 'agent/issue-10' },
       },
     });
-    expect(tasks.findById('123e4567-e89b-12d3-a456-426614174000')?.status).toBe('pr_created');
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'pr_created',
+    );
     expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channel: 'C1', thread_ts: '1.1' }),
     );

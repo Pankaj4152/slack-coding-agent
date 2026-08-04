@@ -3,19 +3,19 @@ import type { WebClient } from '@slack/web-api';
 import type { Logger } from 'pino';
 import { replaceAgentLabels } from './labels.js';
 import { parseAgentMarker, parsePrTaskMarker } from './markers.js';
-import type { TaskRepository } from '../tasks/task-repository.js';
+import type { TaskStore } from '../tasks/task-repository.js';
 import { quoteForSlack } from '../slack/messages.js';
 
 export class GithubWebhookHandler {
   constructor(
-    private readonly tasks: TaskRepository,
+    private readonly tasks: TaskStore,
     private readonly github: Octokit,
     private readonly slack: WebClient,
     private readonly logger: Logger,
   ) {}
 
   async handle(eventName: string, deliveryId: string, payload: any): Promise<void> {
-    if (!this.tasks.claimEvent(deliveryId, 'github')) return;
+    if (!(await this.tasks.claimEvent(deliveryId, 'github'))) return;
     if (eventName === 'issue_comment' && payload.action === 'created') {
       await this.handleIssueComment(payload);
     } else if (eventName === 'pull_request' && payload.action === 'opened') {
@@ -32,13 +32,13 @@ export class GithubWebhookHandler {
     if (payload.comment?.user?.login !== 'github-actions[bot]') return;
     const marker = parseAgentMarker(body);
     if (!marker) return;
-    const task = this.tasks.findByGithubIssue(owner, repo, issueNumber);
+    const task = await this.tasks.findByGithubIssue(owner, repo, issueNumber);
     if (!task) return;
 
     if (marker.type === 'question') {
       if (!marker.content) return;
       if (task.lastAgentQuestionCommentId === payload.comment.id) return;
-      this.tasks.updateStatus(task.id, 'needs_input', payload.comment.id);
+      await this.tasks.updateStatus(task.id, 'needs_input', payload.comment.id);
       await replaceAgentLabels(this.github, owner, repo, issueNumber, 'agent-needs-input', [
         'agent-ready',
         'agent-working',
@@ -52,7 +52,7 @@ export class GithubWebhookHandler {
     }
 
     if (marker.type === 'failed') {
-      this.tasks.updateStatus(task.id, 'failed');
+      await this.tasks.updateStatus(task.id, 'failed');
       await replaceAgentLabels(this.github, owner, repo, issueNumber, 'agent-failed', [
         'agent-ready',
         'agent-working',
@@ -65,7 +65,7 @@ export class GithubWebhookHandler {
       return;
     }
 
-    this.tasks.updateStatus(task.id, 'completed');
+    await this.tasks.updateStatus(task.id, 'completed');
     await this.slack.chat.postMessage({
       channel: task.channelId,
       thread_ts: task.threadTs,
@@ -87,11 +87,11 @@ export class GithubWebhookHandler {
       return;
     }
     const task =
-      this.tasks.findById(marker.taskId) ??
-      this.tasks.findByGithubIssue(owner, repo, marker.issueNumber);
+      (await this.tasks.findById(marker.taskId)) ??
+      (await this.tasks.findByGithubIssue(owner, repo, marker.issueNumber));
     if (!task) return;
 
-    this.tasks.updateStatus(task.id, 'pr_created');
+    await this.tasks.updateStatus(task.id, 'pr_created');
     await replaceAgentLabels(
       this.github,
       task.repositoryOwner,

@@ -2,7 +2,7 @@ import type { AllMiddlewareArgs, SlackEventMiddlewareArgs } from '@slack/bolt';
 import type { Octokit } from '@octokit/rest';
 import type { Logger } from 'pino';
 import { replaceAgentLabels } from '../github/labels.js';
-import type { TaskRepository } from '../tasks/task-repository.js';
+import type { TaskStore } from '../tasks/task-repository.js';
 
 type MessageArgs = AllMiddlewareArgs & SlackEventMiddlewareArgs<'message'>;
 
@@ -20,7 +20,7 @@ export function isHumanThreadReply(event: Record<string, unknown>): boolean {
 }
 
 export function createThreadReplyHandler(deps: {
-  tasks: TaskRepository;
+  tasks: TaskStore;
   github: Octokit;
   logger: Logger;
 }) {
@@ -28,14 +28,14 @@ export function createThreadReplyHandler(deps: {
     const raw = event as unknown as Record<string, unknown>;
     if (!isHumanThreadReply(raw)) return;
     const eventId = (body as { event_id?: string }).event_id;
-    if (!eventId || !deps.tasks.claimEvent(eventId, 'slack')) return;
+    if (!eventId || !(await deps.tasks.claimEvent(eventId, 'slack'))) return;
     const teamId = (body as { team_id?: string }).team_id;
     if (!teamId) return;
     const threadTs = raw.thread_ts as string;
     const channel = raw.channel as string;
-    const task = deps.tasks.findBySlackThread(teamId, channel, threadTs);
+    const task = await deps.tasks.findBySlackThread(teamId, channel, threadTs);
     if (!task || task.status !== 'needs_input') return;
-    if (!deps.tasks.transitionStatus(task.id, 'needs_input', 'ready')) return;
+    if (!(await deps.tasks.transitionStatus(task.id, 'needs_input', 'ready'))) return;
 
     try {
       await deps.github.rest.issues.createComment({
@@ -60,7 +60,7 @@ export function createThreadReplyHandler(deps: {
         text: 'Thanks — I added your answer to the GitHub issue and restarted the coding agent.',
       });
     } catch (error) {
-      deps.tasks.transitionStatus(task.id, 'ready', 'needs_input');
+      await deps.tasks.transitionStatus(task.id, 'ready', 'needs_input');
       deps.logger.error({ err: error, taskId: task.id }, 'Clarification answer submission failed');
       await client.chat.postMessage({
         channel,

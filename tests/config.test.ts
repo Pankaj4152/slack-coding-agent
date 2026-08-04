@@ -11,6 +11,7 @@ const valid = {
   GITHUB_PRIVATE_KEY: 'line1\\nline2',
   GITHUB_WEBHOOK_SECRET: 'webhook',
   DATABASE_PATH: ':memory:',
+  DATABASE_URL: 'postgres://postgres:password@example.com:5432/postgres',
   ALLOWED_REPOSITORIES: 'owner/repo,team/project',
 };
 
@@ -19,6 +20,7 @@ describe('loadConfig', () => {
     const config = loadConfig(valid);
     expect(config.githubPrivateKey).toBe('line1\nline2');
     expect(config.allowedRepositories.has('owner/repo')).toBe(true);
+    expect(config.databaseUrl).toContain('postgres://');
   });
 
   it('fails fast with field names when required values are absent', () => {

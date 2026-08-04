@@ -7,10 +7,10 @@ import { TaskRepository } from '../src/tasks/task-repository.js';
 describe('thread reply handling', () => {
   let db: SqliteDatabase;
   let tasks: TaskRepository;
-  beforeEach(() => {
+  beforeEach(async () => {
     db = openDatabase(':memory:');
     tasks = new TaskRepository(db);
-    tasks.create({
+    await tasks.create({
       id: 'task',
       workspaceId: 'T1',
       channelId: 'C1',
@@ -50,7 +50,7 @@ describe('thread reply handling', () => {
     } as any);
     expect(createComment).toHaveBeenCalledOnce();
     expect(addLabels).toHaveBeenCalledWith(expect.objectContaining({ labels: ['agent-ready'] }));
-    expect(tasks.findById('task')?.status).toBe('ready');
+    expect((await tasks.findById('task'))?.status).toBe('ready');
     expect(postMessage).toHaveBeenCalledOnce();
   });
 });

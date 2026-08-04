@@ -1,7 +1,7 @@
 import type { AllMiddlewareArgs, SlackEventMiddlewareArgs } from '@slack/bolt';
 import type { Logger } from 'pino';
 import { parseSlackTask } from '../tasks/task-parser.js';
-import type { TaskRepository } from '../tasks/task-repository.js';
+import type { TaskStore } from '../tasks/task-repository.js';
 import type { TaskService } from '../tasks/task-service.js';
 import { invalidTaskMessage } from './messages.js';
 
@@ -9,14 +9,14 @@ type MentionArgs = AllMiddlewareArgs & SlackEventMiddlewareArgs<'app_mention'>;
 
 export function createMentionHandler(deps: {
   service: TaskService;
-  tasks: TaskRepository;
+  tasks: TaskStore;
   logger: Logger;
 }) {
   return async ({ event, body, client }: MentionArgs): Promise<void> => {
     const threadTs = event.thread_ts ?? event.ts;
     const workspaceId = body.team_id;
     const eventId = body.event_id;
-    if (!deps.tasks.claimEvent(eventId, 'slack')) return;
+    if (!(await deps.tasks.claimEvent(eventId, 'slack'))) return;
     if (!event.user) return;
 
     const parsed = parseSlackTask(event.text);

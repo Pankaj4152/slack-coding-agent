@@ -1,6 +1,22 @@
 import type { SqliteDatabase } from '../db/database.js';
 import type { Task, TaskStatus } from './task-types.js';
 
+export interface TaskStore {
+  create(
+    input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,
+  ): Promise<Task>;
+  findById(id: string): Promise<Task | undefined>;
+  findBySlackThread(
+    workspaceId: string,
+    channelId: string,
+    threadTs: string,
+  ): Promise<Task | undefined>;
+  findByGithubIssue(owner: string, repo: string, issueNumber: number): Promise<Task | undefined>;
+  updateStatus(id: string, status: TaskStatus, questionCommentId?: number): Promise<Task>;
+  transitionStatus(id: string, from: TaskStatus, to: TaskStatus): Promise<boolean>;
+  claimEvent(eventId: string, source: 'slack' | 'github'): Promise<boolean>;
+}
+
 type TaskRow = {
   id: string;
   workspace_id: string;
@@ -16,10 +32,12 @@ type TaskRow = {
   updated_at: string;
 };
 
-export class TaskRepository {
+export class TaskRepository implements TaskStore {
   constructor(private readonly db: SqliteDatabase) {}
 
-  create(input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>): Task {
+  async create(
+    input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,
+  ): Promise<Task> {
     const now = new Date().toISOString();
     this.db
       .prepare(
@@ -42,16 +60,20 @@ export class TaskRepository {
         now,
         now,
       );
-    return this.findById(input.id)!;
+    return (await this.findById(input.id))!;
   }
 
-  findById(id: string): Task | undefined {
+  async findById(id: string): Promise<Task | undefined> {
     return mapRow(
       this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as TaskRow | undefined,
     );
   }
 
-  findBySlackThread(workspaceId: string, channelId: string, threadTs: string): Task | undefined {
+  async findBySlackThread(
+    workspaceId: string,
+    channelId: string,
+    threadTs: string,
+  ): Promise<Task | undefined> {
     return mapRow(
       this.db
         .prepare('SELECT * FROM tasks WHERE workspace_id = ? AND channel_id = ? AND thread_ts = ?')
@@ -59,7 +81,11 @@ export class TaskRepository {
     );
   }
 
-  findByGithubIssue(owner: string, repo: string, issueNumber: number): Task | undefined {
+  async findByGithubIssue(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+  ): Promise<Task | undefined> {
     return mapRow(
       this.db
         .prepare(
@@ -71,7 +97,7 @@ export class TaskRepository {
     );
   }
 
-  updateStatus(id: string, status: TaskStatus, questionCommentId?: number): Task {
+  async updateStatus(id: string, status: TaskStatus, questionCommentId?: number): Promise<Task> {
     const now = new Date().toISOString();
     this.db
       .prepare(
@@ -80,19 +106,19 @@ export class TaskRepository {
          WHERE id = ?`,
       )
       .run(status, now, questionCommentId ?? null, id);
-    const task = this.findById(id);
+    const task = await this.findById(id);
     if (!task) throw new Error(`Task ${id} not found`);
     return task;
   }
 
-  transitionStatus(id: string, from: TaskStatus, to: TaskStatus): boolean {
+  async transitionStatus(id: string, from: TaskStatus, to: TaskStatus): Promise<boolean> {
     const result = this.db
       .prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?')
       .run(to, new Date().toISOString(), id, from);
     return result.changes === 1;
   }
 
-  claimEvent(eventId: string, source: 'slack' | 'github'): boolean {
+  async claimEvent(eventId: string, source: 'slack' | 'github'): Promise<boolean> {
     const result = this.db
       .prepare(
         'INSERT OR IGNORE INTO processed_events (event_id, source, processed_at) VALUES (?, ?, ?)',

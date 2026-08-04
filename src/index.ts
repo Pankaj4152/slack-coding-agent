@@ -1,19 +1,34 @@
 import 'dotenv/config';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db/database.js';
+import { PostgresTaskRepository } from './db/postgres.js';
 import { createGithubClient } from './github/auth.js';
 import { GithubWebhookHandler } from './github/webhook-handler.js';
 import { createLogger } from './logger.js';
 import { createHttpServer } from './app.js';
 import { createSlackApp } from './slack/create-slack-app.js';
-import { TaskRepository } from './tasks/task-repository.js';
+import type { TaskStore } from './tasks/task-repository.js';
 import { TaskService } from './tasks/task-service.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.logLevel);
-  const db = openDatabase(config.databasePath);
-  const tasks = new TaskRepository(db);
+  let tasks: TaskStore;
+  let closeStore: () => Promise<void>;
+  if (config.databaseUrl) {
+    const postgres = await PostgresTaskRepository.connect(config.databaseUrl);
+    tasks = postgres;
+    closeStore = () => postgres.close();
+    logger.info('Using PostgreSQL task store');
+  } else {
+    const sqlite = openDatabase(config.databasePath);
+    const { TaskRepository } = await import('./tasks/task-repository.js');
+    tasks = new TaskRepository(sqlite);
+    closeStore = async () => {
+      sqlite.close();
+    };
+    logger.info('Using SQLite task store');
+  }
   const github = createGithubClient({
     appId: config.githubAppId,
     installationId: config.githubInstallationId,
@@ -34,7 +49,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, 'Shutting down');
     await Promise.allSettled([slack.stop(), server.close()]);
-    db.close();
+    await closeStore();
   };
   process.once('SIGINT', () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
