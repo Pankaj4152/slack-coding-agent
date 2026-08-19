@@ -1,6 +1,8 @@
 # slack-coding-agent
 
-An internal MVP that turns a Slack mention into a GitHub issue, runs an official OpenAI Codex GitHub Action in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
+An internal MVP that turns a Slack mention into a GitHub issue, runs Codex or Gemini in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
+
+For the complete Slack, GitHub App, Render, database, and target-repository walkthrough, see [Setup from scratch](docs/SETUP_FROM_SCRATCH.md).
 
 ## Architecture and workflow
 
@@ -39,7 +41,7 @@ For clarification, the workflow comments with `<!-- agent-question -->` and appl
 - An OpenAI API key stored as a GitHub Actions secret in each target repository or organization
 - A public HTTPS URL for GitHub webhooks (a secure Cloudflare Tunnel or ngrok tunnel is sufficient for local development)
 
-`OPENAI_API_KEY` does **not** belong in this service's environment.
+`OPENAI_API_KEY` and `GEMINI_API_KEY` do **not** belong in this service's environment. They are target-repository GitHub Actions secrets.
 
 By default, the service uses SQLite at `DATABASE_PATH`. For Render Free or multi-instance deployments, set `DATABASE_URL` to a PostgreSQL connection string (for example Supabase's Shared Pooler session-mode URL). When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
 
@@ -106,7 +108,7 @@ npx tsx scripts/install-workflow.ts /path/to/target-repository
 
 This copies `templates/coding-agent.yml` to `.github/workflows/coding-agent.yml` and creates `AGENTS.md` only if one is absent. Review `AGENTS.md`, fill in exact setup and validation commands, then commit both files.
 
-Alternatively, copy the two templates manually. In the target repository or organization, add an Actions secret named `OPENAI_API_KEY`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**. The workflow uses `openai/codex-action@v1` with its current documented `prompt-file`, `output-file`, `output-schema`, `sandbox`, and `safety-strategy` inputs.
+Alternatively, copy the two templates manually. In the target repository, set the Actions variable `CODING_AGENT_PROVIDER` to `codex` or `gemini`; Codex is the default. Add the matching Actions secret: `OPENAI_API_KEY` for Codex or `GEMINI_API_KEY` for Gemini. Gemini uses `gemini-3.1-flash-lite`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**.
 
 The workflow checks that an issue has valid `slack-agent-metadata`, serializes runs per issue, uses least-privilege workflow permissions, and creates `agent/issue-N`. It never pushes to the default branch, merges, changes branch protection, or deploys.
 
