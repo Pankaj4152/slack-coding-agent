@@ -265,6 +265,8 @@ After Render reports a healthy deployment, send this message in an invited Slack
 @Coding Agent repo: Pankaj4152/customer-api Add cursor pagination to GET /customers
 ```
 
+Before creating the issue, the service verifies GitHub App access, Issues availability, and that `.github/workflows/coding-agent.yml` exists on the repository's default branch.
+
 Expected sequence:
 
 ```text
@@ -277,6 +279,8 @@ Slack mention
 → Pull request is opened
 → PR URL is posted in the Slack thread
 ```
+
+Workflow start, clarification, failure, completion, and pull-request updates are posted in the original Slack thread. If a task fails, the original requester can reply with exactly `retry` in that thread to restart the same GitHub issue.
 
 ## 10. Changing repositories later
 
