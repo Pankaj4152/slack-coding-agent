@@ -172,7 +172,7 @@ Repository names must be explicit `owner/repository` identifiers—not URLs, pat
 
 When the bot asks a question, reply in the same Slack thread. Only the first valid human reply while the task is waiting is accepted. Review the returned PR manually; it will not be merged.
 
-The service checks GitHub App access, repository state, Issues availability, and the presence of `.github/workflows/coding-agent.yml` before creating a task. Workflow start, clarification, failure, completion, and pull-request updates are posted back to the original Slack thread.
+The service checks GitHub App access, repository state, Issues availability, and the presence of `.github/workflows/coding-agent.yml` before creating a task. Workflow start, clarification, failure, completion, and pull-request updates are posted back to the original Slack thread. When Codex fails, the workflow safely distinguishes exhausted API credits, an invalid API key, and temporary rate limiting so Slack receives an actionable reason.
 
 If a task fails, the original requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot retry someone else's task. The requester can reply `cancel` while a task is active to prevent the workflow from publishing a branch or pull request.
 

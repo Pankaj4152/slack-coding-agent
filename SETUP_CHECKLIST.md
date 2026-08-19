@@ -280,7 +280,7 @@ Slack mention
 → PR URL is posted in the Slack thread
 ```
 
-Workflow start, clarification, failure, completion, and pull-request updates are posted in the original Slack thread. If a task fails, the original requester can reply with exactly `retry` in that thread to restart the same GitHub issue. Reply `cancel` while a task is active to prevent it from publishing a branch or pull request.
+Workflow start, clarification, failure, completion, and pull-request updates are posted in the original Slack thread. OpenAI failures identify exhausted API credits, invalid keys, or temporary rate limits without exposing the key. If a task fails, the original requester can reply with exactly `retry` in that thread to restart the same GitHub issue. Reply `cancel` while a task is active to prevent it from publishing a branch or pull request.
 
 ## 10. Changing repositories later
 

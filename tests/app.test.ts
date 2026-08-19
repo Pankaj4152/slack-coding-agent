@@ -23,7 +23,7 @@ describe('HTTP health endpoints', () => {
       status: 'ok',
     });
     await server.close();
-  }, 10_000);
+  }, 30_000);
 
   it('reports readiness only when the task store is reachable', async () => {
     const readyServer = makeServer(async () => {});

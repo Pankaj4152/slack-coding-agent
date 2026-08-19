@@ -121,11 +121,51 @@ jobs:
               }
             }
 
+      - name: Diagnose OpenAI API failure
+        id: api_diagnosis
+        if: steps.codex.outcome == 'failure'
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          async function main() {
+            let diagnosis = 'unknown';
+            try {
+              const response = await fetch('https://api.openai.com/v1/responses', {
+                method: 'POST',
+                headers: {
+                  authorization: `Bearer ${process.env.OPENAI_API_KEY || ''}`,
+                  'content-type': 'application/json',
+                },
+                body: JSON.stringify({ model: 'gpt-5-mini', input: 'Reply OK.', max_output_tokens: 1 }),
+              });
+              if (response.ok) {
+                diagnosis = 'api_available';
+              } else {
+                const payload = await response.json().catch(() => ({}));
+                const code = String(payload?.error?.code || '').toLowerCase();
+                const message = String(payload?.error?.message || '').toLowerCase();
+                if (response.status === 401 || code.includes('invalid_api_key')) diagnosis = 'invalid_key';
+                else if (code.includes('insufficient_quota') || /no credits|billing|quota/.test(message)) diagnosis = 'credits_exhausted';
+                else if (response.status === 429) diagnosis = 'rate_limited';
+                else diagnosis = 'api_error';
+              }
+            } catch {
+              diagnosis = 'diagnostic_unavailable';
+            }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `result=${diagnosis}\n`);
+          }
+          main();
+          NODE
+
       - name: Classify result
         id: result
         if: always()
         env:
           CODEX_OUTCOME: ${{ steps.codex.outcome }}
+          API_DIAGNOSIS: ${{ steps.api_diagnosis.outputs.result }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -136,7 +176,15 @@ jobs:
           } catch {
             result = { status: 'FAILED', summary: 'Codex did not return a valid structured result.', question: '', validation: [], risks: '', noChangesRequired: false };
           }
-          if (process.env.CODEX_OUTCOME !== 'success') result.status = 'FAILED';
+          if (process.env.CODEX_OUTCOME !== 'success') {
+            result.status = 'FAILED';
+            const diagnoses = {
+              credits_exhausted: 'OpenAI API credits are exhausted. Add API credits to the project that owns OPENAI_API_KEY, then reply retry in Slack.',
+              invalid_key: 'OPENAI_API_KEY is invalid or revoked. Replace the GitHub Actions secret with a valid project API key, then reply retry in Slack.',
+              rate_limited: 'The OpenAI API is temporarily rate limited. Wait briefly, then reply retry in Slack.',
+            };
+            result.summary = diagnoses[process.env.API_DIAGNOSIS] || result.summary;
+          }
           if (result.status === 'NEEDS_CLARIFICATION' && !String(result.question || '').trim()) result.status = 'FAILED';
           let changes = '';
           try {
