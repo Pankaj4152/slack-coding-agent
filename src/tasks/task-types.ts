@@ -5,6 +5,7 @@ export const taskStatuses = [
   'needs_input',
   'pr_created',
   'failed',
+  'cancelled',
   'completed',
 ] as const;
 

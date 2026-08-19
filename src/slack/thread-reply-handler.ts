@@ -36,6 +36,21 @@ export function createThreadReplyHandler(deps: {
     const task = await deps.tasks.findBySlackThread(teamId, channel, threadTs);
     if (!task) return;
     const text = (raw.text as string).trim();
+    if (
+      text.toLowerCase() === 'cancel' &&
+      !['completed', 'pr_created', 'cancelled'].includes(task.status)
+    ) {
+      if (raw.user !== task.requesterUserId) {
+        await client.chat.postMessage({
+          channel,
+          thread_ts: threadTs,
+          text: 'Only the person who created this task can cancel it.',
+        });
+        return;
+      }
+      await cancelTask(task, deps, client, channel, threadTs);
+      return;
+    }
     if (task.status === 'failed' && text.toLowerCase() === 'retry') {
       if (raw.user !== task.requesterUserId) {
         await client.chat.postMessage({
@@ -83,6 +98,45 @@ export function createThreadReplyHandler(deps: {
       });
     }
   };
+}
+
+async function cancelTask(
+  task: NonNullable<Awaited<ReturnType<TaskStore['findBySlackThread']>>>,
+  deps: { tasks: TaskStore; github: Octokit; logger: Logger },
+  client: MessageArgs['client'],
+  channel: string,
+  threadTs: string,
+): Promise<void> {
+  if (!(await deps.tasks.transitionStatus(task.id, task.status, 'cancelled'))) return;
+  try {
+    await deps.github.rest.issues.createComment({
+      owner: task.repositoryOwner,
+      repo: task.repositoryName,
+      issue_number: task.githubIssueNumber,
+      body: '<!-- agent-cancelled -->\n\nTask cancelled by the original requester from Slack. Do not publish agent changes.',
+    });
+    await replaceAgentLabels(
+      deps.github,
+      task.repositoryOwner,
+      task.repositoryName,
+      task.githubIssueNumber,
+      'agent-cancelled',
+      ['agent-ready', 'agent-working', 'agent-needs-input', 'agent-failed'],
+    );
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: 'Task cancelled. Any running agent may finish its current computation, but it will not publish a branch or pull request.',
+    });
+  } catch (error) {
+    await deps.tasks.transitionStatus(task.id, 'cancelled', task.status);
+    deps.logger.error({ err: error, taskId: task.id }, 'Task cancellation failed');
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: "I couldn't cancel the task in GitHub. Its previous state has been restored; please try again.",
+    });
+  }
 }
 
 async function retryFailedTask(

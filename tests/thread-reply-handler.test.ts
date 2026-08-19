@@ -100,4 +100,32 @@ describe('thread reply handling', () => {
       expect.objectContaining({ text: expect.stringContaining('Only the person') }),
     );
   });
+
+  it('lets the original requester cancel an active task', async () => {
+    await tasks.updateStatus('task', 'working');
+    const createComment = vi.fn().mockResolvedValue({});
+    const addLabels = vi.fn().mockResolvedValue({});
+    const removeLabel = vi.fn().mockResolvedValue({});
+    const postMessage = vi.fn().mockResolvedValue({});
+    const handler = createThreadReplyHandler({
+      tasks,
+      github: { rest: { issues: { createComment, addLabels, removeLabel } } } as any,
+      logger: pino({ level: 'silent' }),
+    });
+    await handler({
+      event: { user: 'U1', channel: 'C1', text: 'cancel', thread_ts: '1.1', ts: '1.5' },
+      body: { event_id: 'Ev4', team_id: 'T1' },
+      client: { chat: { postMessage } },
+    } as any);
+    expect(createComment).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining('agent-cancelled') }),
+    );
+    expect(addLabels).toHaveBeenCalledWith(
+      expect.objectContaining({ labels: ['agent-cancelled'] }),
+    );
+    expect((await tasks.findById('task'))?.status).toBe('cancelled');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('Task cancelled') }),
+    );
+  });
 });
