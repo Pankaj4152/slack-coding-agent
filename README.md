@@ -174,7 +174,7 @@ When the bot asks a question, reply in the same Slack thread. Only the first val
 
 The service checks GitHub App access, repository state, Issues availability, and the presence of `.github/workflows/coding-agent.yml` before creating a task. Workflow start, clarification, failure, completion, and pull-request updates are posted back to the original Slack thread.
 
-If a task fails, the original requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot retry someone else's task.
+If a task fails, the original requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot retry someone else's task. The requester can reply `cancel` while a task is active to prevent the workflow from publishing a branch or pull request.
 
 ## Troubleshooting
 
@@ -183,11 +183,14 @@ If a task fails, the original requester can reply with exactly `retry` in the sa
 - **No workflow run:** confirm the template is installed on the default branch, the issue has `agent-ready`, Actions is enabled, and labels exist.
 - **Codex fails immediately:** confirm `OPENAI_API_KEY` is an Actions secret in the target repository/organization.
 - **Task fails and needs another attempt:** reply `retry` in the original Slack thread as the user who created the task.
+- **Cancel an active task:** reply `cancel` in the original Slack thread as the user who created the task.
 - **No Slack reply:** invite the bot to the channel and verify the matching message history scope/event.
 - **Webhook returns 401:** the GitHub App and service must use the identical webhook secret; proxies must preserve the raw request body.
 - **PR creation fails:** enable workflow PR creation and confirm `contents: write` / `pull-requests: write` are permitted.
 
 Logs are structured and redact credentials. They intentionally contain task IDs, repository/issue identifiers, channels, threads, event types, and status transitions, but not tokens, private keys, authorization headers, source files, or API keys.
+
+`GET /health` and `GET /healthz` are liveness checks. `GET /readyz` also verifies that the configured SQLite or PostgreSQL task store is reachable. Processed Slack and GitHub delivery IDs are retained for 90 days and cleaned up daily.
 
 ## Security notes
 
