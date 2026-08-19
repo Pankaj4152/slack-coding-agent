@@ -35,6 +35,16 @@ export class GithubWebhookHandler {
     const task = await this.tasks.findByGithubIssue(owner, repo, issueNumber);
     if (!task) return;
 
+    if (marker.type === 'started') {
+      if (!(await this.tasks.transitionStatus(task.id, 'ready', 'working'))) return;
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text: marker.content || 'The coding agent started working on this task.',
+      });
+      return;
+    }
+
     if (marker.type === 'question') {
       if (!marker.content) return;
       if (task.lastAgentQuestionCommentId === payload.comment.id) return;

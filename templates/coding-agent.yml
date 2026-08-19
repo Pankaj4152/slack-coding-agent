@@ -45,7 +45,10 @@ jobs:
       - name: Mark task working
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh issue edit "$ISSUE_NUMBER" --remove-label "agent-ready" --add-label "agent-working"
+        run: |
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --remove-label "agent-ready" --add-label "agent-working"
+          printf '<!-- agent-started -->\n\nThe coding agent is inspecting the repository and preparing the requested change.\n' > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Build prompt from issue conversation
         env:
@@ -209,12 +212,34 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Report failure
-        if: always() && steps.validate.outcome == 'success' && (failure() || steps.result.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
+        if: always() && (failure() || steps.validate.outcome == 'failure' || steps.result.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          CODEX_OUTCOME: ${{ steps.codex.outcome }}
+          RESULT_STATUS: ${{ steps.result.outputs.status }}
+          CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
         run: |
-          printf '<!-- agent-failed -->\n\nThe coding workflow failed. Run: %s\n' "$RUN_URL" > "$RUNNER_TEMP/comment.md"
-          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
-          gh issue edit "$ISSUE_NUMBER" --add-label "agent-failed"
+          node <<'NODE'
+          const fs = require('fs');
+          let reason = 'The coding workflow failed.';
+          if (process.env.VALIDATE_OUTCOME === 'failure') {
+            reason = 'The task metadata could not be validated. Confirm the issue was created by the Slack coding agent for this repository.';
+          } else {
+            try {
+              const result = JSON.parse(fs.readFileSync('.codex-task/normalized-result.json', 'utf8'));
+              if (String(result.summary || '').trim()) reason = String(result.summary).trim();
+            } catch {}
+            if (process.env.CODEX_OUTCOME === 'failure' && reason === 'The coding workflow failed.') {
+              reason = 'Codex could not complete the task. Check the Run Codex step for authentication, credit, rate-limit, or execution errors.';
+            } else if (process.env.CREATE_PR_OUTCOME === 'failure') {
+              reason = 'Codex completed its work, but the branch or pull request could not be created.';
+            }
+          }
+          reason = reason.replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]').slice(0, 1500);
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', `<!-- agent-failed -->\n\n${reason}\n\nRun: ${process.env.RUN_URL}\n`);
+          NODE
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --add-label "agent-failed"
           gh api --method DELETE "repos/$REPOSITORY/issues/$ISSUE_NUMBER/labels/agent-working" >/dev/null 2>&1 || true
