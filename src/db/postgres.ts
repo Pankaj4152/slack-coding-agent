@@ -83,6 +83,13 @@ export class PostgresTaskRepository implements TaskStore {
     await this.pool.query('SELECT 1');
   }
 
+  async cleanupProcessedEvents(before: string): Promise<number> {
+    const result = await this.pool.query('DELETE FROM processed_events WHERE processed_at < $1', [
+      before,
+    ]);
+    return result.rowCount ?? 0;
+  }
+
   async create(
     input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,
   ): Promise<Task> {

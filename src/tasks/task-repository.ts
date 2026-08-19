@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from './task-types.js';
 
 export interface TaskStore {
   checkHealth(): Promise<void>;
+  cleanupProcessedEvents(before: string): Promise<number>;
   create(
     input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,
   ): Promise<Task>;
@@ -38,6 +39,11 @@ export class TaskRepository implements TaskStore {
 
   async checkHealth(): Promise<void> {
     this.db.prepare('SELECT 1').get();
+  }
+
+  async cleanupProcessedEvents(before: string): Promise<number> {
+    return this.db.prepare('DELETE FROM processed_events WHERE processed_at < ?').run(before)
+      .changes;
   }
 
   async create(
