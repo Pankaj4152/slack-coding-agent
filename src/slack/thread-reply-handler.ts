@@ -34,7 +34,21 @@ export function createThreadReplyHandler(deps: {
     const threadTs = raw.thread_ts as string;
     const channel = raw.channel as string;
     const task = await deps.tasks.findBySlackThread(teamId, channel, threadTs);
-    if (!task || task.status !== 'needs_input') return;
+    if (!task) return;
+    const text = (raw.text as string).trim();
+    if (task.status === 'failed' && text.toLowerCase() === 'retry') {
+      if (raw.user !== task.requesterUserId) {
+        await client.chat.postMessage({
+          channel,
+          thread_ts: threadTs,
+          text: 'Only the person who created this task can retry it.',
+        });
+        return;
+      }
+      await retryFailedTask(task, deps, client, channel, threadTs);
+      return;
+    }
+    if (task.status !== 'needs_input') return;
     if (!(await deps.tasks.transitionStatus(task.id, 'needs_input', 'ready'))) return;
 
     try {
@@ -69,6 +83,45 @@ export function createThreadReplyHandler(deps: {
       });
     }
   };
+}
+
+async function retryFailedTask(
+  task: NonNullable<Awaited<ReturnType<TaskStore['findBySlackThread']>>>,
+  deps: { tasks: TaskStore; github: Octokit; logger: Logger },
+  client: MessageArgs['client'],
+  channel: string,
+  threadTs: string,
+): Promise<void> {
+  if (!(await deps.tasks.transitionStatus(task.id, 'failed', 'ready'))) return;
+  try {
+    await deps.github.rest.issues.createComment({
+      owner: task.repositoryOwner,
+      repo: task.repositoryName,
+      issue_number: task.githubIssueNumber,
+      body: '<!-- agent-retry -->\n\nRetry requested from the original Slack thread.',
+    });
+    await replaceAgentLabels(
+      deps.github,
+      task.repositoryOwner,
+      task.repositoryName,
+      task.githubIssueNumber,
+      'agent-ready',
+      ['agent-failed', 'agent-working', 'agent-needs-input'],
+    );
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: 'Retry accepted. I restarted the coding agent on the same GitHub issue.',
+    });
+  } catch (error) {
+    await deps.tasks.transitionStatus(task.id, 'ready', 'failed');
+    deps.logger.error({ err: error, taskId: task.id }, 'Task retry failed');
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: "I couldn't restart the coding agent. The task is still marked as failed; check the GitHub App permissions and try again.",
+    });
+  }
 }
 
 function escapeComment(text: string): string {
