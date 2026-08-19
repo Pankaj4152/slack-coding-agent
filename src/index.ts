@@ -41,6 +41,7 @@ async function main(): Promise<void> {
     webhookSecret: config.githubWebhookSecret,
     webhookHandler,
     logger,
+    readinessCheck: () => tasks.checkHealth(),
   });
 
   let shuttingDown = false;

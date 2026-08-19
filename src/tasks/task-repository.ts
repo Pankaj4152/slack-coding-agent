@@ -2,6 +2,7 @@ import type { SqliteDatabase } from '../db/database.js';
 import type { Task, TaskStatus } from './task-types.js';
 
 export interface TaskStore {
+  checkHealth(): Promise<void>;
   create(
     input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,
   ): Promise<Task>;
@@ -34,6 +35,10 @@ type TaskRow = {
 
 export class TaskRepository implements TaskStore {
   constructor(private readonly db: SqliteDatabase) {}
+
+  async checkHealth(): Promise<void> {
+    this.db.prepare('SELECT 1').get();
+  }
 
   async create(
     input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,

@@ -79,6 +79,10 @@ export class PostgresTaskRepository implements TaskStore {
     await this.pool.end();
   }
 
+  async checkHealth(): Promise<void> {
+    await this.pool.query('SELECT 1');
+  }
+
   async create(
     input: Omit<Task, 'createdAt' | 'updatedAt' | 'lastAgentQuestionCommentId'>,
   ): Promise<Task> {

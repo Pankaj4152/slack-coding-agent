@@ -7,11 +7,11 @@ export function createHttpServer(options: {
   webhookSecret: string;
   webhookHandler: GithubWebhookHandler;
   logger: Logger;
+  readinessCheck?: () => Promise<void>;
 }) {
   const server = Fastify({
     loggerInstance: options.logger,
     bodyLimit: 1_048_576,
-    disableRequestLogging: false,
   });
 
   server.removeAllContentTypeParsers();
@@ -19,7 +19,18 @@ export function createHttpServer(options: {
     done(null, body);
   });
 
-  server.get('/health', async () => ({ status: 'ok' }));
+  const liveness = async () => ({ status: 'ok' });
+  server.get('/health', liveness);
+  server.get('/healthz', liveness);
+  server.get('/readyz', async (_request, reply) => {
+    try {
+      await options.readinessCheck?.();
+      return { status: 'ready' };
+    } catch (error) {
+      options.logger.error({ err: error }, 'Readiness check failed');
+      return reply.code(503).send({ status: 'not_ready' });
+    }
+  });
   server.post('/webhooks/github', async (request, reply) => {
     const raw = request.body;
     if (!Buffer.isBuffer(raw)) return reply.code(400).send({ error: 'Expected JSON payload' });
