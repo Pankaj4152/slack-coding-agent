@@ -2,7 +2,7 @@ import type { AllMiddlewareArgs, SlackEventMiddlewareArgs } from '@slack/bolt';
 import type { Logger } from 'pino';
 import { parseSlackTask } from '../tasks/task-parser.js';
 import type { TaskStore } from '../tasks/task-repository.js';
-import type { TaskService } from '../tasks/task-service.js';
+import { RepositoryPreflightError, type TaskService } from '../tasks/task-service.js';
 import { invalidTaskMessage } from './messages.js';
 
 type MentionArgs = AllMiddlewareArgs & SlackEventMiddlewareArgs<'app_mention'>;
@@ -66,7 +66,10 @@ export function createMentionHandler(deps: {
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadTs,
-        text: "I couldn't create the GitHub issue. Check the GitHub App installation and repository permissions, then try again.",
+        text:
+          error instanceof RepositoryPreflightError
+            ? error.message
+            : "I couldn't create the GitHub issue. Check the GitHub App installation and repository permissions, then try again.",
       });
     }
   };

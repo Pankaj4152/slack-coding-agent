@@ -1,6 +1,7 @@
 import pino from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import { createMentionHandler } from '../src/slack/mention-handler.js';
+import { RepositoryPreflightError } from '../src/tasks/task-service.js';
 
 describe('mention handler idempotency', () => {
   it('does not create two issues for a duplicate Slack delivery', async () => {
@@ -35,5 +36,34 @@ describe('mention handler idempotency', () => {
     await handler(args as any);
     expect(create).toHaveBeenCalledOnce();
     expect(postMessage).toHaveBeenCalledOnce();
+  });
+});
+
+describe('mention handler errors', () => {
+  it('posts an actionable repository preflight error', async () => {
+    const postMessage = vi.fn().mockResolvedValue({});
+    const handler = createMentionHandler({
+      tasks: { claimEvent: async () => true } as any,
+      service: {
+        isAllowed: () => true,
+        create: async () => {
+          throw new RepositoryPreflightError('The coding workflow is missing.');
+        },
+      } as any,
+      logger: pino({ level: 'silent' }),
+    });
+    await handler({
+      event: {
+        text: '<@BOT> repo: owner/repo Add pagination',
+        channel: 'C1',
+        user: 'U1',
+        ts: '1.1',
+      },
+      body: { event_id: 'Ev2', team_id: 'T1' },
+      client: { chat: { postMessage } },
+    } as any);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'The coding workflow is missing.' }),
+    );
   });
 });
