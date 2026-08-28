@@ -34,6 +34,13 @@ export class GithubWebhookHandler {
     if (!marker) return;
     const task = await this.tasks.findByGithubIssue(owner, repo, issueNumber);
     if (!task) return;
+    if (task.status === 'cancelled') {
+      this.logger.info(
+        { taskId: task.id, eventType: marker.type },
+        'Ignored agent webhook for cancelled task',
+      );
+      return;
+    }
 
     if (marker.type === 'started') {
       if (!(await this.tasks.transitionStatus(task.id, 'ready', 'working'))) return;
@@ -70,7 +77,7 @@ export class GithubWebhookHandler {
       await this.slack.chat.postMessage({
         channel: task.channelId,
         thread_ts: task.threadTs,
-        text: `The coding agent workflow failed.${marker.content ? `\n\n${quoteForSlack(marker.content)}` : ''}\n\nOpen the GitHub issue for details and retry by adding the \`agent-ready\` label.`,
+        text: `The coding agent workflow failed.${marker.content ? `\n\n${quoteForSlack(marker.content)}` : ''}\n\nReply \`retry\` in this thread to start another attempt.`,
       });
       return;
     }
@@ -100,6 +107,13 @@ export class GithubWebhookHandler {
       (await this.tasks.findById(marker.taskId)) ??
       (await this.tasks.findByGithubIssue(owner, repo, marker.issueNumber));
     if (!task) return;
+    if (task.status === 'cancelled') {
+      this.logger.info(
+        { taskId: task.id, eventType: 'pull-request' },
+        'Ignored PR for cancelled task',
+      );
+      return;
+    }
 
     await this.tasks.updateStatus(task.id, 'pr_created');
     await replaceAgentLabels(

@@ -127,4 +127,47 @@ describe('GithubWebhookHandler', () => {
       expect.objectContaining({ channel: 'C1', thread_ts: '1.1' }),
     );
   });
+
+  it('does not let a late completion overwrite a cancelled task', async () => {
+    await tasks.updateStatus('123e4567-e89b-12d3-a456-426614174000', 'cancelled');
+    const { handler, postMessage } = makeHandler();
+
+    await handler.handle('issue_comment', 'delivery-late-completion', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 58,
+        body: '<!-- agent-completed -->\n\nA late result arrived.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'cancelled',
+    );
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a PR notification for a cancelled task', async () => {
+    await tasks.updateStatus('123e4567-e89b-12d3-a456-426614174000', 'cancelled');
+    const { handler, postMessage } = makeHandler();
+
+    await handler.handle('pull_request', 'delivery-late-pr', {
+      action: 'opened',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      pull_request: {
+        title: 'Late change',
+        html_url: 'https://github.test/owner/repo/pull/2',
+        body: '<!-- agent-pr task-id="123e4567-e89b-12d3-a456-426614174000" issue="10" -->',
+        user: { login: 'github-actions[bot]' },
+        head: { ref: 'agent/issue-10' },
+      },
+    });
+
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'cancelled',
+    );
+    expect(postMessage).not.toHaveBeenCalled();
+  });
 });
