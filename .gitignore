@@ -13,3 +13,5 @@ data/*
 .DS_Store
 codex-output.txt
 codex-prompt.txt
+hackathon/results/*
+!hackathon/results/.gitkeep
