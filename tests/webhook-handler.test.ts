@@ -63,6 +63,50 @@ describe('GithubWebhookHandler', () => {
     expect(postMessage).toHaveBeenCalledOnce();
   });
 
+  it('posts a started update once and transitions the task to working', async () => {
+    await tasks.updateStatus('123e4567-e89b-12d3-a456-426614174000', 'ready');
+    const { handler, postMessage } = makeHandler();
+    const payload = {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 56,
+        body: '<!-- agent-started -->\n\nThe coding agent is inspecting the repository.',
+        user: { login: 'github-actions[bot]' },
+      },
+    };
+    await handler.handle('issue_comment', 'delivery-started', payload);
+    await handler.handle('issue_comment', 'delivery-started-copy', payload);
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'The coding agent is inspecting the repository.' }),
+    );
+  });
+
+  it('forwards a detailed failure to the mapped Slack thread', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-failed', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 57,
+        body: '<!-- agent-failed -->\n\nCodex did not return a valid structured result.\n\nRun: https://github.test/run',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('failed');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: expect.stringContaining('Codex did not return a valid structured result.'),
+      }),
+    );
+  });
+
   it('posts an opened PR in the mapped Slack thread', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('pull_request', 'delivery-pr', {

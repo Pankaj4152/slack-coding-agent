@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   repository_name TEXT NOT NULL,
   github_issue_number INTEGER NOT NULL,
   status TEXT NOT NULL CHECK(status IN (
-    'creating', 'ready', 'working', 'needs_input', 'pr_created', 'failed', 'completed'
+    'creating', 'ready', 'working', 'needs_input', 'pr_created', 'failed', 'cancelled', 'completed'
   )),
   last_agent_question_comment_id INTEGER,
   created_at TEXT NOT NULL,
@@ -66,11 +66,28 @@ export class PostgresTaskRepository implements TaskStore {
     };
     const repository = new PostgresTaskRepository(new Pool(config));
     await repository.pool.query(migrationSql);
+    await repository.pool.query(`
+      ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+      ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK(status IN (
+        'creating', 'ready', 'working', 'needs_input', 'pr_created', 'failed', 'cancelled', 'completed'
+      ));
+    `);
     return repository;
   }
 
   async close(): Promise<void> {
     await this.pool.end();
+  }
+
+  async checkHealth(): Promise<void> {
+    await this.pool.query('SELECT 1');
+  }
+
+  async cleanupProcessedEvents(before: string): Promise<number> {
+    const result = await this.pool.query('DELETE FROM processed_events WHERE processed_at < $1', [
+      before,
+    ]);
+    return result.rowCount ?? 0;
   }
 
   async create(

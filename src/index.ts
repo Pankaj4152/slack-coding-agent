@@ -41,12 +41,27 @@ async function main(): Promise<void> {
     webhookSecret: config.githubWebhookSecret,
     webhookHandler,
     logger,
+    readinessCheck: () => tasks.checkHealth(),
   });
+
+  const cleanupProcessedEvents = async () => {
+    const before = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      const deleted = await tasks.cleanupProcessedEvents(before);
+      if (deleted > 0) logger.info({ deleted, before }, 'Cleaned up processed events');
+    } catch (error) {
+      logger.error({ err: error }, 'Processed event cleanup failed');
+    }
+  };
+  await cleanupProcessedEvents();
+  const cleanupTimer = setInterval(() => void cleanupProcessedEvents(), 24 * 60 * 60 * 1000);
+  cleanupTimer.unref();
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    clearInterval(cleanupTimer);
     logger.info({ signal }, 'Shutting down');
     await Promise.allSettled([slack.stop(), server.close()]);
     await closeStore();

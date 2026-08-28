@@ -6,6 +6,7 @@ export const agentLabels = {
   'agent-needs-input': ['Agent requires human clarification', 'd93f0b'],
   'agent-pr-created': ['Agent opened a pull request', '0e8a16'],
   'agent-failed': ['Agent workflow failed', 'b60205'],
+  'agent-cancelled': ['Agent task was cancelled from Slack', '6e7781'],
 } as const;
 
 export async function ensureAgentLabels(

@@ -1,6 +1,8 @@
 # slack-coding-agent
 
-An internal MVP that turns a Slack mention into a GitHub issue, runs an official OpenAI Codex GitHub Action in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
+An internal MVP that turns a Slack mention into a GitHub issue, runs Codex or Gemini in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
+
+For the complete Slack, GitHub App, Render, database, and target-repository walkthrough, see [Setup from scratch](docs/SETUP_FROM_SCRATCH.md).
 
 ## Architecture and workflow
 
@@ -39,7 +41,7 @@ For clarification, the workflow comments with `<!-- agent-question -->` and appl
 - An OpenAI API key stored as a GitHub Actions secret in each target repository or organization
 - A public HTTPS URL for GitHub webhooks (a secure Cloudflare Tunnel or ngrok tunnel is sufficient for local development)
 
-`OPENAI_API_KEY` does **not** belong in this service's environment.
+`OPENAI_API_KEY` and `GEMINI_API_KEY` do **not** belong in this service's environment. They are target-repository GitHub Actions secrets.
 
 By default, the service uses SQLite at `DATABASE_PATH`. For Render Free or multi-instance deployments, set `DATABASE_URL` to a PostgreSQL connection string (for example Supabase's Shared Pooler session-mode URL). When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
 
@@ -106,7 +108,7 @@ npx tsx scripts/install-workflow.ts /path/to/target-repository
 
 This copies `templates/coding-agent.yml` to `.github/workflows/coding-agent.yml` and creates `AGENTS.md` only if one is absent. Review `AGENTS.md`, fill in exact setup and validation commands, then commit both files.
 
-Alternatively, copy the two templates manually. In the target repository or organization, add an Actions secret named `OPENAI_API_KEY`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**. The workflow uses `openai/codex-action@v1` with its current documented `prompt-file`, `output-file`, `output-schema`, `sandbox`, and `safety-strategy` inputs.
+Alternatively, copy the two templates manually. In the target repository, set the Actions variable `CODING_AGENT_PROVIDER` to `codex` or `gemini`; Codex is the default. Add the matching Actions secret: `OPENAI_API_KEY` for Codex or `GEMINI_API_KEY` for Gemini. Gemini uses `gemini-3.1-flash-lite`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**.
 
 The workflow checks that an issue has valid `slack-agent-metadata`, serializes runs per issue, uses least-privilege workflow permissions, and creates `agent/issue-N`. It never pushes to the default branch, merges, changes branch protection, or deploys.
 
@@ -172,17 +174,25 @@ Repository names must be explicit `owner/repository` identifiers—not URLs, pat
 
 When the bot asks a question, reply in the same Slack thread. Only the first valid human reply while the task is waiting is accepted. Review the returned PR manually; it will not be merged.
 
+The service checks GitHub App access, repository state, Issues availability, and the presence of `.github/workflows/coding-agent.yml` before creating a task. Workflow start, clarification, failure, completion, and pull-request updates are posted back to the original Slack thread. When Codex fails, the workflow safely distinguishes exhausted API credits, an invalid API key, and temporary rate limiting so Slack receives an actionable reason.
+
+If a task fails, the original requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot retry someone else's task. The requester can reply `cancel` while a task is active to prevent the workflow from publishing a branch or pull request.
+
 ## Troubleshooting
 
 - **Invalid startup configuration:** compare `.env` to `.env.example`. Do not wrap numeric IDs in nonnumeric text.
 - **Issue creation fails:** confirm the App installation ID, repository selection, and Issues permission.
 - **No workflow run:** confirm the template is installed on the default branch, the issue has `agent-ready`, Actions is enabled, and labels exist.
 - **Codex fails immediately:** confirm `OPENAI_API_KEY` is an Actions secret in the target repository/organization.
+- **Task fails and needs another attempt:** reply `retry` in the original Slack thread as the user who created the task.
+- **Cancel an active task:** reply `cancel` in the original Slack thread as the user who created the task.
 - **No Slack reply:** invite the bot to the channel and verify the matching message history scope/event.
 - **Webhook returns 401:** the GitHub App and service must use the identical webhook secret; proxies must preserve the raw request body.
 - **PR creation fails:** enable workflow PR creation and confirm `contents: write` / `pull-requests: write` are permitted.
 
 Logs are structured and redact credentials. They intentionally contain task IDs, repository/issue identifiers, channels, threads, event types, and status transitions, but not tokens, private keys, authorization headers, source files, or API keys.
+
+`GET /health` and `GET /healthz` are liveness checks. `GET /readyz` also verifies that the configured SQLite or PostgreSQL task store is reachable. Processed Slack and GitHub delivery IDs are retained for 90 days and cleaned up daily.
 
 ## Security notes
 

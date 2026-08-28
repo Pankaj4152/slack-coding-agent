@@ -15,6 +15,13 @@ interface CreateTaskInput {
   task: string;
 }
 
+export class RepositoryPreflightError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RepositoryPreflightError';
+  }
+}
+
 export class TaskService {
   private readonly inFlight = new Map<string, Promise<Task>>();
 
@@ -51,6 +58,7 @@ export class TaskService {
   }
 
   private async createNew(input: CreateTaskInput): Promise<Task> {
+    await this.preflightRepository(input.owner, input.repo);
     const id = randomUUID();
     const issueNumber = await createAgentIssue(this.github, {
       owner: input.owner,
@@ -88,5 +96,36 @@ export class TaskService {
       'Created agent task',
     );
     return task;
+  }
+
+  private async preflightRepository(owner: string, repo: string): Promise<void> {
+    try {
+      const repository = await this.github.rest.repos.get({ owner, repo });
+      if (repository.data.archived || repository.data.disabled) {
+        throw new RepositoryPreflightError(
+          `Repository \`${owner}/${repo}\` is archived or disabled, so a coding task cannot run there.`,
+        );
+      }
+      if (!repository.data.has_issues) {
+        throw new RepositoryPreflightError(
+          `GitHub Issues are disabled in \`${owner}/${repo}\`. Enable Issues and try again.`,
+        );
+      }
+      await this.github.rest.repos.getContent({
+        owner,
+        repo,
+        path: '.github/workflows/coding-agent.yml',
+        ref: repository.data.default_branch,
+      });
+    } catch (error) {
+      if (error instanceof RepositoryPreflightError) throw error;
+      const status = (error as { status?: number }).status;
+      if (status === 404) {
+        throw new RepositoryPreflightError(
+          `I cannot access \`${owner}/${repo}\`, or its \`.github/workflows/coding-agent.yml\` file is missing from the default branch. Install the GitHub App and add the workflow, then try again.`,
+        );
+      }
+      throw error;
+    }
   }
 }
