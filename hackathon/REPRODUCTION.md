@@ -14,8 +14,29 @@ npm run typecheck
 npm test
 ```
 
-## Evaluation commands
+## Baseline evaluation
 
-The baseline and final evaluation commands will be added when the evaluation runners are implemented. They will use the fixed cases in `hackathon/evaluation/cases.json` and will document versions, runtime, required secrets, and expected outputs.
+Use an approved disposable target repository with synthetic data. Pin baseline application behavior to commit `63ff730`, complete a run manifest, and follow the full [execution protocol](./evaluation/PROTOCOL.md).
+
+Create the ignored observation template:
+
+```text
+npm run evaluate:baseline -- init
+```
+
+Run the ten fixed cases from `hackathon/evaluation/cases.json`, fill the generated observation file with redacted evidence, and calculate the summary:
+
+```text
+npm run evaluate:baseline
+```
+
+Expected generated files:
+
+```text
+hackathon/results/baseline-observations.json
+hackathon/results/baseline-summary.json
+```
+
+These files are ignored by Git until they have been reviewed and redacted. The final workflow will use the same cases and scoring rules.
 
 Credentials, `.env` files, SQLite databases, logs, and private source data must not be included in the submission.

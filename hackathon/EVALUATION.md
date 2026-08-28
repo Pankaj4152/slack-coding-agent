@@ -39,6 +39,8 @@ Every case defines:
 - whether clarification is required; and
 - whether repository changes are allowed.
 
+Runs must follow the controlled setup, evidence, timing, cost, and redaction rules in [evaluation/PROTOCOL.md](./evaluation/PROTOCOL.md). Each run records its conditions using `evaluation/run-manifest.example.json` so provider or environment differences remain visible.
+
 ## Scoring rules
 
 A case counts as verified completion only when its observed outcome matches the expected outcome, every acceptance criterion is supported by recorded evidence, all required checks pass, and the workflow makes no disallowed repository change.

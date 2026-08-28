@@ -1,6 +1,6 @@
 # Baseline Evaluation Runner
 
-The runner scores recorded observations against the acceptance criteria declared in `cases.json`. It does not call an AI provider or infer missing evidence.
+The runner scores recorded observations against the acceptance criteria declared in `cases.json`. It does not call an AI provider or infer missing evidence. Follow [PROTOCOL.md](./PROTOCOL.md) to run cases consistently and record a manifest from `run-manifest.example.json` before starting.
 
 Create an ignored observation template:
 
