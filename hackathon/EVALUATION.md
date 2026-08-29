@@ -49,7 +49,7 @@ Clarification, escalation, retry, cancellation, and no-change cases can count as
 
 ## Results
 
-Results will be added after the evaluation runner exists.
+The evaluation runner and reporting format are implemented. Numerical results remain pending until all ten cases are executed under the controlled protocol; no placeholder is treated as measured evidence.
 
 | Metric                           | Baseline |   Final |  Change |
 | -------------------------------- | -------: | ------: | ------: |

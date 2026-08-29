@@ -16,3 +16,11 @@ Slack is where a developer request begins, but the request may be incomplete and
 - [Evaluation cases](./evaluation/cases.json)
 
 These documents will be updated with measured results as each implementation phase is completed. No result should be described as final until it has been reproduced using the documented commands.
+
+## Current progress
+
+- Company feature branches have been integrated without changing the no-automatic-merge contract.
+- The baseline application is pinned to commit `63ff730`.
+- Ten fixed evaluation cases, evidence-based scoring, a controlled execution protocol, and report generation are implemented.
+- Live baseline measurements are still pending and are not represented by fabricated values.
+- The next product iteration is a separate planner stage.
