@@ -209,6 +209,8 @@ gemini-3.1-flash-lite
 
 The unpaid Gemini API-key tier is intended for experimentation and light use. Quotas and eligible models are controlled by Google and may change. When the quota is exhausted or rate limited, the failure is reported in the Slack thread and the requester can retry later.
 
+Every attempt first runs a read-only planning pass. If the plan is approved, the workflow runs the selected provider a second time for implementation. Plan provider quota and cost for two invocations per successful coding attempt; clarification and rejected plans stop before implementation.
+
 ### Codex
 
 Create this repository variable, or omit it because Codex is the default:

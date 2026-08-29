@@ -24,4 +24,6 @@ These documents will be updated with measured results as each implementation pha
 - The baseline application is pinned to commit `63ff730`.
 - Ten fixed evaluation cases, evidence-based scoring, a controlled execution protocol, and report generation are implemented.
 - Live baseline measurements are still pending and are not represented by fabricated values.
-- The next product iteration is a separate planner stage.
+- A provider-neutral planner stage is implemented with clarification, rejection, cancellation, Slack progress, and PR-evidence integration.
+- Controlled planner measurements and representative live trajectories are still pending.
+- The next product iteration is independent verification against the planner's acceptance criteria.
