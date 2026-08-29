@@ -4,11 +4,12 @@ import { parseAgentMarker, parsePrTaskMarker } from '../src/github/markers.js';
 import { verifyWebhookSignature } from '../src/github/webhook-signature.js';
 
 describe('agent markers', () => {
-  it('parses question, completion, failure, and PR markers', () => {
+  it('parses planning, question, completion, failure, and PR markers', () => {
     expect(parseAgentMarker('x\n<!-- agent-question -->\nWhich format?')).toEqual({
       type: 'question',
       content: 'Which format?',
     });
+    expect(parseAgentMarker('<!-- agent-plan --> ready')?.type).toBe('planned');
     expect(parseAgentMarker('<!-- agent-completed --> done')?.type).toBe('completed');
     expect(parseAgentMarker('<!-- agent-failed --> nope')?.type).toBe('failed');
     expect(parsePrTaskMarker('<!-- agent-pr task-id="abc" issue="42" -->')).toEqual({

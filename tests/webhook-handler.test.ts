@@ -107,6 +107,28 @@ describe('GithubWebhookHandler', () => {
     );
   });
 
+  it('forwards an approved plan without changing the working state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-plan', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 59,
+        body: '<!-- agent-plan -->\n\nPlan approved with 3 acceptance criteria. Implementation is starting.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: 'Plan approved with 3 acceptance criteria. Implementation is starting.',
+      }),
+    );
+  });
+
   it('posts an opened PR in the mapped Slack thread', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('pull_request', 'delivery-pr', {

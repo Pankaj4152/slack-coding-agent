@@ -186,6 +186,20 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --remove-label "agent-working" --add-label "agent-needs-input"
 
+      - name: Report approved plan
+        if: steps.planner.outputs.status == 'READY'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const summary = String(planner.summary || 'Planning is complete.').replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]').slice(0, 800);
+          const count = planner.acceptanceCriteria.length;
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', `<!-- agent-plan -->\n\n${summary}\n\nPlan approved with ${count} acceptance ${count === 1 ? 'criterion' : 'criteria'}. Implementation is starting.\n`);
+          NODE
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+
       - name: Stop if task was cancelled during planning
         id: planner_cancel
         if: steps.planner.outputs.status == 'READY'

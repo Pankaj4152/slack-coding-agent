@@ -52,6 +52,20 @@ export class GithubWebhookHandler {
       return;
     }
 
+    if (marker.type === 'planned') {
+      if (task.status === 'ready') {
+        if (!(await this.tasks.transitionStatus(task.id, 'ready', 'working'))) return;
+      } else if (task.status !== 'working') {
+        return;
+      }
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text: marker.content || 'Planning is complete and implementation is starting.',
+      });
+      return;
+    }
+
     if (marker.type === 'question') {
       if (!marker.content) return;
       if (task.lastAgentQuestionCommentId === payload.comment.id) return;
