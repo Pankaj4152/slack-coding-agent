@@ -35,4 +35,12 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("steps.planner.outputs.status != 'NEEDS_CLARIFICATION'");
     expect(template).toContain("steps.planner_cancel.outputs.cancelled != 'true'");
   });
+
+  it('carries escaped planner evidence into the pull request', () => {
+    expect(template).toContain('planner-result-final.json');
+    expect(template).toContain('## Planned acceptance criteria');
+    expect(template).toContain('## Validation reported by the coding agent');
+    expect(template).toContain("replace(/<!--/g, '&lt;!--')");
+    expect(template).toContain('<!-- agent-pr task-id=');
+  });
 });

@@ -399,6 +399,7 @@ jobs:
           RUNNER_TEMP_DIR: ${{ runner.temp }}
         run: |
           cp .codex-task/normalized-result.json "$RUNNER_TEMP_DIR/agent-result-final.json"
+          cp .codex-task/normalized-planner-result.json "$RUNNER_TEMP_DIR/planner-result-final.json"
           rm -rf .codex-task
           if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
             echo "cancelled=true" >> "$GITHUB_OUTPUT"
@@ -421,11 +422,34 @@ jobs:
           const fs = require('fs');
           const issue = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/agent-issue-final.json'));
           const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/agent-result-final.json'));
+          const planner = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/planner-result-final.json'));
           const match = (issue.body || '').match(/<!-- slack-agent-metadata\s*([\s\S]*?)-->/);
           if (!match) throw new Error('Missing metadata');
           const metadata = JSON.parse(match[1]);
           if (!/^[0-9a-f-]{36}$/i.test(metadata.taskId)) throw new Error('Invalid task ID');
-          const body = `${result.summary}\n\nCloses #${process.env.ISSUE_NUMBER}\n\n<!-- agent-pr task-id="${metadata.taskId}" issue="${process.env.ISSUE_NUMBER}" -->`;
+          const safe = (value) => String(value || '').replace(/<!--/g, '&lt;!--').replace(/-->/g, '--&gt;');
+          const bullets = (values, empty) => Array.isArray(values) && values.length
+            ? values.map((value) => `- ${safe(value)}`).join('\n')
+            : `- ${empty}`;
+          const body = `## Summary
+
+          ${safe(result.summary)}
+
+          ## Planned acceptance criteria
+
+          ${bullets(planner.acceptanceCriteria, 'No acceptance criteria were recorded.')}
+
+          ## Validation reported by the coding agent
+
+          ${bullets(result.validation, 'No validation was reported.')}
+
+          ## Risks
+
+          ${safe(result.risks) || 'No additional risks were reported.'}
+
+          Closes #${process.env.ISSUE_NUMBER}
+
+          <!-- agent-pr task-id="${metadata.taskId}" issue="${process.env.ISSUE_NUMBER}" -->`;
           fs.writeFileSync(process.env.RUNNER_TEMP_DIR + '/pr-body.md', body);
           NODE
           PR_URL=$(gh pr create --title "Agent: resolve #$ISSUE_NUMBER" --body-file "$RUNNER_TEMP_DIR/pr-body.md" --base "$DEFAULT_BRANCH" --head "$BRANCH")
