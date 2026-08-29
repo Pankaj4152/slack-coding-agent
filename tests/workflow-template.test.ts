@@ -34,6 +34,8 @@ describe('coding agent workflow template', () => {
     );
     expect(template).toContain("steps.planner.outputs.status != 'NEEDS_CLARIFICATION'");
     expect(template).toContain("steps.planner_cancel.outputs.cancelled != 'true'");
+    expect(template).toContain('name: Check cancellation before failure reporting');
+    expect(template).toContain("steps.final_cancel_check.outputs.cancelled != 'true'");
   });
 
   it('carries escaped planner evidence into the pull request', () => {

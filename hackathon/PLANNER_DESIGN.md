@@ -52,4 +52,4 @@ The workflow checks the `agent-cancelled` label after planning and again before 
 
 ## Slack communication
 
-The existing `<!-- agent-started -->`, `<!-- agent-question -->`, `<!-- agent-failed -->`, `<!-- agent-completed -->`, and PR task markers remain unchanged. Planner clarification uses `<!-- agent-question -->`, so the existing GitHub webhook and Slack thread mapping continue to work without a parallel contract.
+The existing `<!-- agent-started -->`, `<!-- agent-question -->`, `<!-- agent-failed -->`, `<!-- agent-completed -->`, and PR task markers remain unchanged. Planner clarification uses `<!-- agent-question -->`, so the existing GitHub webhook and Slack thread mapping continue to work without a parallel contract. The additive `<!-- agent-plan -->` marker reports approved-plan progress without changing task state.

@@ -27,11 +27,12 @@ The normal flow is:
 1. A user mentions the bot with `repo: owner/repository` and a task.
 2. The service validates the repository allowlist, creates labels and an issue, and stores the mapping.
 3. Label `agent-ready` starts the target repository workflow.
-4. Codex reads the issue, comments, and `AGENTS.md`, edits and validates the checkout, and returns structured output.
-5. Deterministic workflow steps create a branch, commit, push, and PR. Codex does not perform GitHub state changes.
-6. GitHub sends an `issue_comment` or `pull_request` webhook, and the service posts into the original Slack thread.
+4. A read-only planner inspects the issue conversation, `AGENTS.md`, and repository context. It produces acceptance criteria and an implementation plan or asks one clarification question.
+5. The selected Codex or Gemini coding provider receives the approved plan, edits and validates the checkout, and returns structured output.
+6. Deterministic workflow steps create a branch, commit, push, and PR. Agents do not perform GitHub state changes.
+7. GitHub sends an `issue_comment` or `pull_request` webhook, and the service posts progress, clarification, or the pull request into the original Slack thread.
 
-For clarification, the workflow comments with `<!-- agent-question -->` and applies `agent-needs-input`. The first human thread reply is posted to the issue, the label changes back to `agent-ready`, and a fresh workflow run reads the full conversation. Failures use `<!-- agent-failed -->`; this explicit final workflow step avoids unreliable `workflow_run` correlation.
+For clarification, the planner or coding agent comments with `<!-- agent-question -->` and applies `agent-needs-input`. The first human thread reply is posted to the issue, the label changes back to `agent-ready`, and a fresh workflow run reads the full conversation. Failures use `<!-- agent-failed -->`; this explicit final workflow step avoids unreliable `workflow_run` correlation.
 
 ## Prerequisites
 

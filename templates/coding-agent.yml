@@ -470,8 +470,20 @@ jobs:
           fi
           gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
 
+      - name: Check cancellation before failure reporting
+        id: final_cancel_check
+        if: always() && steps.validate.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
+            echo "cancelled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cancelled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Report failure
-        if: always() && steps.planner.outputs.status != 'NEEDS_CLARIFICATION' && steps.planner_cancel.outputs.cancelled != 'true' && (failure() || steps.validate.outcome == 'failure' || steps.planner.outputs.status == 'FAILED' || steps.planner.outputs.status == 'REJECTED' || steps.result.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
+        if: always() && steps.planner.outputs.status != 'NEEDS_CLARIFICATION' && steps.planner_cancel.outputs.cancelled != 'true' && steps.final_cancel_check.outputs.cancelled != 'true' && (failure() || steps.validate.outcome == 'failure' || steps.planner.outputs.status == 'FAILED' || steps.planner.outputs.status == 'REJECTED' || steps.result.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
