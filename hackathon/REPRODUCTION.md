@@ -35,6 +35,7 @@ Expected generated files:
 ```text
 hackathon/results/baseline-observations.json
 hackathon/results/baseline-summary.json
+hackathon/results/baseline-report.md
 ```
 
 These files are ignored by Git until they have been reviewed and redacted. The final workflow will use the same cases and scoring rules.

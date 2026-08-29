@@ -4,8 +4,11 @@ import {
   evaluate,
   parseCases,
   parseObservations,
+  parseRunManifest,
+  renderMarkdownReport,
   type EvaluationCase,
   type Observation,
+  type RunManifest,
 } from './evaluation.js';
 
 const evaluationCase: EvaluationCase = {
@@ -17,6 +20,26 @@ const evaluationCase: EvaluationCase = {
   expectedOutcome: 'pull-request',
   requiresClarification: false,
   allowsRepositoryChanges: true,
+};
+
+const manifest: RunManifest = {
+  runId: 'baseline-20260829-01',
+  workflow: 'baseline',
+  applicationCommit: '63ff730',
+  caseFileCommit: '7bd9369',
+  provider: 'codex',
+  model: 'provider-default',
+  providerTier: 'paid',
+  runner: 'ubuntu-latest',
+  nodeVersion: '20.19.0',
+  startedAtUtc: '2026-08-29T00:00:00Z',
+  timeoutMinutesPerAttempt: 60,
+  maximumAttemptsPerCase: 1,
+  targetRepository: 'synthetic-owner/synthetic-repository',
+  startingCommit: '1234567',
+  pricingSourceAndDate: 'Provider pricing page, 2026-08-29',
+  controlledDifferences: [],
+  notes: '',
 };
 
 function passingObservation(overrides: Partial<Observation> = {}): Observation {
@@ -78,5 +101,16 @@ describe('hackathon evaluation', () => {
     expect(() => parseObservations([passingObservation(), passingObservation()])).toThrow(
       'Duplicate observation case ID',
     );
+    expect(() => parseRunManifest({ ...manifest, provider: 'unknown' })).toThrow();
+  });
+
+  it('renders aggregate and per-case results as Markdown', () => {
+    const report = renderMarkdownReport(
+      manifest,
+      evaluate([evaluationCase], [passingObservation()]),
+    );
+    expect(report).toContain('# Baseline Evaluation Report');
+    expect(report).toContain('1/1 (100%)');
+    expect(report).toContain('| case-1 | PASS | Verified |');
   });
 });

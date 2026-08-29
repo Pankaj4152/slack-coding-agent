@@ -49,6 +49,28 @@ export const observationSchema = z.object({
 export type EvaluationCase = z.infer<typeof evaluationCaseSchema>;
 export type Observation = z.infer<typeof observationSchema>;
 
+export const runManifestSchema = z.object({
+  runId: z.string().min(1),
+  workflow: z.enum(['baseline', 'final']),
+  applicationCommit: z.string().regex(/^[0-9a-f]{7,40}$/i),
+  caseFileCommit: z.string().regex(/^[0-9a-f]{7,40}$/i),
+  provider: z.enum(['codex', 'gemini']),
+  model: z.string().min(1),
+  providerTier: z.string().min(1),
+  runner: z.string().min(1),
+  nodeVersion: z.string().min(1),
+  startedAtUtc: z.string().datetime({ offset: true }),
+  timeoutMinutesPerAttempt: z.number().int().positive(),
+  maximumAttemptsPerCase: z.number().int().positive(),
+  targetRepository: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+  startingCommit: z.string().regex(/^[0-9a-f]{7,40}$/i),
+  pricingSourceAndDate: z.string().min(1),
+  controlledDifferences: z.array(z.string().min(1)),
+  notes: z.string(),
+});
+
+export type RunManifest = z.infer<typeof runManifestSchema>;
+
 export interface CaseScore {
   caseId: string;
   verified: boolean;
@@ -81,6 +103,10 @@ export function parseObservations(value: unknown): Observation[] {
     'observation case ID',
   );
   return observations;
+}
+
+export function parseRunManifest(value: unknown): RunManifest {
+  return runManifestSchema.parse(value);
 }
 
 export function createObservationTemplate(cases: EvaluationCase[]): Observation[] {
@@ -134,6 +160,64 @@ export function evaluate(cases: EvaluationCase[], observations: Observation[]): 
   };
 }
 
+export function renderMarkdownReport(manifest: RunManifest, summary: EvaluationSummary): string {
+  const differences =
+    manifest.controlledDifferences.length === 0
+      ? 'None recorded.'
+      : manifest.controlledDifferences.map((item) => `- ${item}`).join('\n');
+  const caseRows = summary.cases
+    .map((item) => {
+      const reasons = item.reasons.length === 0 ? 'Verified' : item.reasons.join('; ');
+      return `| ${escapeTable(item.caseId)} | ${item.verified ? 'PASS' : 'FAIL'} | ${escapeTable(reasons)} |`;
+    })
+    .join('\n');
+
+  return `# ${manifest.workflow === 'baseline' ? 'Baseline' : 'Final'} Evaluation Report
+
+## Run conditions
+
+| Field | Value |
+| --- | --- |
+| Run ID | ${escapeTable(manifest.runId)} |
+| Application commit | \`${manifest.applicationCommit}\` |
+| Case-file commit | \`${manifest.caseFileCommit}\` |
+| Provider | ${manifest.provider} |
+| Model | ${escapeTable(manifest.model)} |
+| Provider tier | ${escapeTable(manifest.providerTier)} |
+| Runner | ${escapeTable(manifest.runner)} |
+| Node.js | ${escapeTable(manifest.nodeVersion)} |
+| Started at | ${manifest.startedAtUtc} |
+| Timeout per attempt | ${manifest.timeoutMinutesPerAttempt} minutes |
+| Maximum attempts per case | ${manifest.maximumAttemptsPerCase} |
+| Target repository | ${escapeTable(manifest.targetRepository)} |
+| Starting commit | \`${manifest.startingCommit}\` |
+| Pricing source/date | ${escapeTable(manifest.pricingSourceAndDate)} |
+
+## Aggregate results
+
+| Metric | Result |
+| --- | ---: |
+| Verified completion | ${summary.verifiedCases}/${summary.totalCases} (${summary.verifiedCompletionRate}%) |
+| First-attempt success rate | ${summary.firstAttemptSuccessRate}% |
+| Total human time | ${summary.totalHumanMinutes} minutes |
+| Estimated provider cost | $${summary.totalCostUsd.toFixed(2)} |
+
+## Per-case results
+
+| Case | Result | Evidence gap or failure reason |
+| --- | --- | --- |
+${caseRows}
+
+## Controlled differences
+
+${differences}
+
+## Notes
+
+${manifest.notes.trim() || 'None recorded.'}
+`;
+}
+
 function scoreCase(evaluationCase: EvaluationCase, observation?: Observation): CaseScore {
   const reasons: string[] = [];
   if (!observation)
@@ -175,4 +259,8 @@ function rate(numerator: number, denominator: number): number {
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function escapeTable(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
