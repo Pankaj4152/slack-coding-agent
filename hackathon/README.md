@@ -13,6 +13,7 @@ Slack is where a developer request begins, but the request may be incomplete and
 - [Reproduction guide](./REPRODUCTION.md)
 - [Agent trajectories](./AGENT_TRAJECTORIES.md)
 - [Planner design](./PLANNER_DESIGN.md)
+- [Verifier design](./VERIFIER_DESIGN.md)
 - [Video script](./VIDEO_SCRIPT.md)
 - [Evaluation cases](./evaluation/cases.json)
 
