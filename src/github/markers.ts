@@ -1,6 +1,8 @@
 export const markers = {
   started: '<!-- agent-started -->',
   planned: '<!-- agent-plan -->',
+  coding: '<!-- agent-coding -->',
+  validating: '<!-- agent-validating -->',
   repairing: '<!-- agent-repair -->',
   verified: '<!-- agent-verification -->',
   question: '<!-- agent-question -->',
@@ -14,6 +16,8 @@ export function parseAgentMarker(body: string):
         | 'started'
         | 'planned'
         | 'approvalRequired'
+        | 'coding'
+        | 'validating'
         | 'repairing'
         | 'verified'
         | 'question'

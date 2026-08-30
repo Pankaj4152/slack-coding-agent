@@ -14,6 +14,8 @@ describe('agent markers', () => {
       content: 'Which format?',
     });
     expect(parseAgentMarker('<!-- agent-plan --> ready')?.type).toBe('planned');
+    expect(parseAgentMarker('<!-- agent-coding --> coding')?.type).toBe('coding');
+    expect(parseAgentMarker('<!-- agent-validating --> checks')?.type).toBe('validating');
     expect(
       parseAgentMarker(
         '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" --> approve',

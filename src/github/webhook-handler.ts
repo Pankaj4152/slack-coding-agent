@@ -84,16 +84,24 @@ export class GithubWebhookHandler {
       return;
     }
 
-    if (marker.type === 'repairing' || marker.type === 'verified') {
+    if (
+      marker.type === 'coding' ||
+      marker.type === 'validating' ||
+      marker.type === 'repairing' ||
+      marker.type === 'verified'
+    ) {
       if (task.status !== 'working') return;
+      const fallback = {
+        coding: 'Plan accepted. Implementation is starting.',
+        validating: 'Implementation finished. Deterministic validation is running.',
+        repairing:
+          'Independent verification found actionable issues. One bounded repair attempt is starting.',
+        verified: 'Independent verification passed.',
+      }[marker.type];
       await this.slack.chat.postMessage({
         channel: task.channelId,
         thread_ts: task.threadTs,
-        text:
-          marker.content ||
-          (marker.type === 'repairing'
-            ? 'Independent verification found actionable issues. One bounded repair attempt is starting.'
-            : 'Independent verification passed.'),
+        text: marker.content || fallback,
       });
       return;
     }

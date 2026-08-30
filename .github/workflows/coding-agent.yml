@@ -277,6 +277,14 @@ jobs:
           fs.writeFileSync('.codex-task/prompt.md', prompt, { mode: 0o600 });
           NODE
 
+      - name: Report implementation start
+        if: steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '<!-- agent-coding -->\n\nPlan accepted. Implementation is starting.\n' > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+
       - name: Run Codex
         id: codex
         if: env.AGENT_PROVIDER == 'codex' && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
@@ -438,6 +446,14 @@ jobs:
           else
             echo "cancelled=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Report validation start
+        if: steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '<!-- agent-validating -->\n\nImplementation finished. Deterministic validation and independent review are starting.\n' > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Run deterministic validation
         id: deterministic_validation

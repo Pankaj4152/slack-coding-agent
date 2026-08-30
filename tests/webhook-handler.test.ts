@@ -193,6 +193,21 @@ describe('GithubWebhookHandler', () => {
     );
   });
 
+  it.each([
+    ['coding', '<!-- agent-coding -->\n\nImplementation started.'],
+    ['validation', '<!-- agent-validating -->\n\nValidation started.'],
+  ])('forwards %s progress without changing the working state', async (phase, body) => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', `delivery-${phase}`, {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: { id: 63, body, user: { login: 'github-actions[bot]' } },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledOnce();
+  });
+
   it('posts an opened PR in the mapped Slack thread', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('pull_request', 'delivery-pr', {

@@ -84,6 +84,8 @@ describe('coding agent workflow template', () => {
   });
 
   it('reports verification evidence to Slack and the PR', () => {
+    expect(template).toContain('<!-- agent-coding -->');
+    expect(template).toContain('<!-- agent-validating -->');
     expect(template).toContain('<!-- agent-verification -->');
     expect(template).toContain('Confidence: ${verifier.confidence}%');
     expect(template).toContain('verifier-result-final.json');
