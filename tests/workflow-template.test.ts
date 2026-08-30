@@ -17,6 +17,17 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('gemini_model: gemini-3.1-flash-lite');
   });
 
+  it('accepts canonical repository casing and only trusts the configured app bot', () => {
+    expect(template).toContain(
+      'metadata.repository.toLowerCase() !== process.env.REPOSITORY.toLowerCase()',
+    );
+    expect(
+      template.match(/allow-bot-users: \$\{\{ vars\.CODING_AGENT_APPROVAL_BOT_LOGIN \}\}/g),
+    ).toHaveLength(5);
+    expect(template).toContain('APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}');
+    expect(template).not.toContain('pankaj-slack-coding-agent[bot]');
+  });
+
   it('plans before coding with a shared structured contract', () => {
     expect(template).toContain('name: Run Codex planner');
     expect(template).toContain('name: Run Gemini planner');
@@ -26,6 +37,8 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("if: steps.planner.outputs.status == 'NEEDS_CLARIFICATION'");
     expect(template).toContain('<!-- agent-question -->');
     expect(template).toContain('APPROVED PLAN:');
+    expect(template).toContain("'\\n.codex-task/\\n.gemini/\\ngha-creds-*.json\\n'");
+    expect(template).toContain("['status', '--porcelain']");
   });
 
   it('optionally requires requester approval bound to the exact plan', () => {
