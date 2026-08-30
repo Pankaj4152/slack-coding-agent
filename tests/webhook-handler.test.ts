@@ -151,6 +151,28 @@ describe('GithubWebhookHandler', () => {
     );
   });
 
+  it('forwards bounded repair progress without changing the working state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-repair', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 61,
+        body: '<!-- agent-repair -->\n\nVerification found actionable issues. Starting the one allowed repair attempt.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: 'Verification found actionable issues. Starting the one allowed repair attempt.',
+      }),
+    );
+  });
+
   it('posts an opened PR in the mapped Slack thread', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('pull_request', 'delivery-pr', {

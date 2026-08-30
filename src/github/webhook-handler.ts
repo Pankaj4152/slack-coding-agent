@@ -66,12 +66,16 @@ export class GithubWebhookHandler {
       return;
     }
 
-    if (marker.type === 'verified') {
+    if (marker.type === 'repairing' || marker.type === 'verified') {
       if (task.status !== 'working') return;
       await this.slack.chat.postMessage({
         channel: task.channelId,
         thread_ts: task.threadTs,
-        text: marker.content || 'Independent verification passed.',
+        text:
+          marker.content ||
+          (marker.type === 'repairing'
+            ? 'Independent verification found actionable issues. One bounded repair attempt is starting.'
+            : 'Independent verification passed.'),
       });
       return;
     }

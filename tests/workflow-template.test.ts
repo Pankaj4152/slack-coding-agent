@@ -81,6 +81,7 @@ describe('coding agent workflow template', () => {
   it('allows exactly one evidence-driven repair and requires fresh verification', () => {
     expect(template).toContain('name: Run Codex repair');
     expect(template).toContain('name: Run Gemini repair');
+    expect(template).toContain('<!-- agent-repair -->');
     expect(template).toContain('attempt-0/verifier-result.json');
     expect(template).toContain('name: Rerun deterministic validation after repair');
     expect(template).toContain('name: Run Codex repair verifier');

@@ -651,6 +651,14 @@ jobs:
             echo "cancelled=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Report bounded repair attempt
+        if: steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '<!-- agent-repair -->\n\nIndependent verification found actionable issues. Starting the one allowed repair attempt.\n' > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+
       - name: Build repair prompt
         if: steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
         run: |
