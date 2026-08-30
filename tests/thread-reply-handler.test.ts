@@ -109,13 +109,12 @@ describe('thread reply handling', () => {
     const postMessage = vi.fn().mockResolvedValue({});
     const listComments = vi.fn();
     const github = {
-      paginate: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            body: '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->',
-          },
-        ]),
+      paginate: vi.fn().mockResolvedValue([
+        {
+          body: '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->',
+          user: { login: 'github-actions[bot]' },
+        },
+      ]),
       rest: { issues: { createComment, addLabels, removeLabel, listComments } },
     };
     const handler = createThreadReplyHandler({

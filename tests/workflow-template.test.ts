@@ -28,9 +28,22 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('APPROVED PLAN:');
   });
 
+  it('optionally requires requester approval bound to the exact plan', () => {
+    expect(template).toContain('CODING_AGENT_REQUIRE_APPROVAL');
+    expect(template).toContain('CODING_AGENT_APPROVAL_BOT_LOGIN');
+    expect(template).toContain('name: Check plan approval');
+    expect(template).toContain('name: Request plan approval');
+    expect(template).toContain('<!-- agent-approval-required plan-sha256=');
+    expect(template).toContain('agent-approved\\s+plan-sha256=');
+    expect(template).toContain("steps.approval.outputs.approved == 'true'");
+    expect(template.indexOf('name: Check plan approval')).toBeLessThan(
+      template.indexOf('\n      - name: Run Codex\n'),
+    );
+  });
+
   it('does not code or report failure after clarification or cancellation', () => {
     expect(template).toContain(
-      "if: env.AGENT_PROVIDER == 'codex' && steps.planner.outputs.status == 'READY' && steps.planner_cancel.outputs.cancelled != 'true'",
+      "if: env.AGENT_PROVIDER == 'codex' && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'",
     );
     expect(template).toContain("steps.planner.outputs.status != 'NEEDS_CLARIFICATION'");
     expect(template).toContain("steps.planner_cancel.outputs.cancelled != 'true'");

@@ -176,6 +176,7 @@ async function approvePlan(
     const fingerprint = comments
       .slice()
       .reverse()
+      .filter((comment) => comment.user?.login === 'github-actions[bot]')
       .map((comment) => parseApprovalFingerprint(String(comment.body || '')))
       .find((value): value is string => Boolean(value));
     if (!fingerprint) throw new Error('Missing plan approval fingerprint');

@@ -197,9 +197,45 @@ jobs:
           const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
           const summary = String(planner.summary || 'Planning is complete.').replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]').slice(0, 800);
           const count = planner.acceptanceCriteria.length;
-          fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', `<!-- agent-plan -->\n\n${summary}\n\nPlan approved with ${count} acceptance ${count === 1 ? 'criterion' : 'criteria'}. Implementation is starting.\n`);
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', `<!-- agent-plan -->\n\n${summary}\n\nPlan ready with ${count} acceptance ${count === 1 ? 'criterion' : 'criteria'}.\n`);
           NODE
           gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+
+      - name: Check plan approval
+        id: approval
+        if: steps.planner.outputs.status == 'READY'
+        env:
+          REQUIRE_APPROVAL: ${{ vars.CODING_AGENT_REQUIRE_APPROVAL || 'false' }}
+          APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN || 'pankaj-slack-coding-agent[bot]' }}
+          RUNNER_TEMP_DIR: ${{ runner.temp }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const path = require('path');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const fingerprint = crypto.createHash('sha256').update(JSON.stringify(planner)).digest('hex');
+          const comments = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP_DIR, 'agent-comments.json'))).flat();
+          const approvedFingerprints = comments
+            .filter((comment) => comment.user?.login === process.env.APPROVAL_BOT_LOGIN)
+            .map((comment) => String(comment.body || '').match(/<!--\s*agent-approved\s+plan-sha256="([a-f0-9]{64})"\s*-->/i)?.[1]?.toLowerCase())
+            .filter(Boolean);
+          const required = String(process.env.REQUIRE_APPROVAL || '').toLowerCase() === 'true';
+          const approved = !required || approvedFingerprints.includes(fingerprint);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `required=${required}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `approved=${approved}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `fingerprint=${fingerprint}\n`);
+          NODE
+
+      - name: Request plan approval
+        if: steps.approval.outputs.required == 'true' && steps.approval.outputs.approved != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_FINGERPRINT: ${{ steps.approval.outputs.fingerprint }}
+        run: |
+          printf '<!-- agent-approval-required plan-sha256="%s" -->\n\nThe plan is ready for review. Reply `approve` in the original Slack thread to start implementation, or `cancel` to stop.\n' "$PLAN_FINGERPRINT" > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --remove-label "agent-working" --add-label "agent-awaiting-approval"
 
       - name: Stop if task was cancelled during planning
         id: planner_cancel
@@ -214,7 +250,7 @@ jobs:
           fi
 
       - name: Build coding prompt from approved plan
-        if: steps.planner.outputs.status == 'READY' && steps.planner_cancel.outputs.cancelled != 'true'
+        if: steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -243,7 +279,7 @@ jobs:
 
       - name: Run Codex
         id: codex
-        if: env.AGENT_PROVIDER == 'codex' && steps.planner.outputs.status == 'READY' && steps.planner_cancel.outputs.cancelled != 'true'
+        if: env.AGENT_PROVIDER == 'codex' && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: openai/codex-action@v1
         with:
@@ -271,7 +307,7 @@ jobs:
 
       - name: Run Gemini
         id: gemini
-        if: env.AGENT_PROVIDER == 'gemini' && steps.planner.outputs.status == 'READY' && steps.planner_cancel.outputs.cancelled != 'true'
+        if: env.AGENT_PROVIDER == 'gemini' && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
         with:
@@ -330,7 +366,7 @@ jobs:
 
       - name: Classify result
         id: result
-        if: always() && steps.planner.outputs.status == 'READY' && steps.planner_cancel.outputs.cancelled != 'true'
+        if: always() && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
         env:
           CODEX_OUTCOME: ${{ steps.codex.outcome }}
           GEMINI_OUTCOME: ${{ steps.gemini.outcome }}
