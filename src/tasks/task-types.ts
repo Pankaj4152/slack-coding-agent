@@ -3,6 +3,7 @@ export const taskStatuses = [
   'ready',
   'working',
   'needs_input',
+  'awaiting_approval',
   'pr_created',
   'failed',
   'cancelled',

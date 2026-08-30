@@ -4,6 +4,7 @@ export const agentLabels = {
   'agent-ready': ['Agent task is ready to run', '1d76db'],
   'agent-working': ['Agent workflow is running', 'fbca04'],
   'agent-needs-input': ['Agent requires human clarification', 'd93f0b'],
+  'agent-awaiting-approval': ['Agent plan requires requester approval', '5319e7'],
   'agent-pr-created': ['Agent opened a pull request', '0e8a16'],
   'agent-failed': ['Agent workflow failed', 'b60205'],
   'agent-cancelled': ['Agent task was cancelled from Slack', '6e7781'],

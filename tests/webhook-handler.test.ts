@@ -151,6 +151,26 @@ describe('GithubWebhookHandler', () => {
     );
   });
 
+  it('moves an approval request into the awaiting approval state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-approval-required', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 62,
+        body: '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->\n\nReply `approve` to continue.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'awaiting_approval',
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Reply `approve` to continue.' }),
+    );
+  });
+
   it('forwards bounded repair progress without changing the working state', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('issue_comment', 'delivery-repair', {

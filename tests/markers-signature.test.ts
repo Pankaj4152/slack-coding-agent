@@ -1,6 +1,10 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { parseAgentMarker, parsePrTaskMarker } from '../src/github/markers.js';
+import {
+  parseAgentMarker,
+  parseApprovalFingerprint,
+  parsePrTaskMarker,
+} from '../src/github/markers.js';
 import { verifyWebhookSignature } from '../src/github/webhook-signature.js';
 
 describe('agent markers', () => {
@@ -10,6 +14,16 @@ describe('agent markers', () => {
       content: 'Which format?',
     });
     expect(parseAgentMarker('<!-- agent-plan --> ready')?.type).toBe('planned');
+    expect(
+      parseAgentMarker(
+        '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" --> approve',
+      )?.type,
+    ).toBe('approvalRequired');
+    expect(
+      parseApprovalFingerprint(
+        '<!-- agent-approved plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->',
+      ),
+    ).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(parseAgentMarker('<!-- agent-repair --> fixing')?.type).toBe('repairing');
     expect(parseAgentMarker('<!-- agent-verification --> pass')?.type).toBe('verified');
     expect(parseAgentMarker('<!-- agent-completed --> done')?.type).toBe('completed');

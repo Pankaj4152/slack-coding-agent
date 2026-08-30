@@ -66,6 +66,24 @@ export class GithubWebhookHandler {
       return;
     }
 
+    if (marker.type === 'approvalRequired') {
+      if (task.status === 'ready') {
+        if (!(await this.tasks.transitionStatus(task.id, 'ready', 'awaiting_approval'))) return;
+      } else if (task.status === 'working') {
+        if (!(await this.tasks.transitionStatus(task.id, 'working', 'awaiting_approval'))) return;
+      } else if (task.status !== 'awaiting_approval') {
+        return;
+      }
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text:
+          marker.content ||
+          'The plan is ready. Reply `approve` to start implementation or `cancel` to stop.',
+      });
+      return;
+    }
+
     if (marker.type === 'repairing' || marker.type === 'verified') {
       if (task.status !== 'working') return;
       await this.slack.chat.postMessage({

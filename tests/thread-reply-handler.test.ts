@@ -101,6 +101,59 @@ describe('thread reply handling', () => {
     );
   });
 
+  it('lets only the original requester approve the current plan fingerprint', async () => {
+    await tasks.updateStatus('task', 'awaiting_approval');
+    const createComment = vi.fn().mockResolvedValue({});
+    const addLabels = vi.fn().mockResolvedValue({});
+    const removeLabel = vi.fn().mockResolvedValue({});
+    const postMessage = vi.fn().mockResolvedValue({});
+    const listComments = vi.fn();
+    const github = {
+      paginate: vi
+        .fn()
+        .mockResolvedValue([
+          {
+            body: '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->',
+          },
+        ]),
+      rest: { issues: { createComment, addLabels, removeLabel, listComments } },
+    };
+    const handler = createThreadReplyHandler({
+      tasks,
+      github: github as any,
+      logger: pino({ level: 'silent' }),
+    });
+    await handler({
+      event: { user: 'U1', channel: 'C1', text: 'approve', thread_ts: '1.1', ts: '1.6' },
+      body: { event_id: 'Ev5', team_id: 'T1' },
+      client: { chat: { postMessage } },
+    } as any);
+    expect(createComment).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining('agent-approved') }),
+    );
+    expect(addLabels).toHaveBeenCalledWith(expect.objectContaining({ labels: ['agent-ready'] }));
+    expect((await tasks.findById('task'))?.status).toBe('ready');
+  });
+
+  it('rejects plan approval from someone other than the requester', async () => {
+    await tasks.updateStatus('task', 'awaiting_approval');
+    const postMessage = vi.fn().mockResolvedValue({});
+    const handler = createThreadReplyHandler({
+      tasks,
+      github: {} as any,
+      logger: pino({ level: 'silent' }),
+    });
+    await handler({
+      event: { user: 'U2', channel: 'C1', text: 'approve', thread_ts: '1.1', ts: '1.7' },
+      body: { event_id: 'Ev6', team_id: 'T1' },
+      client: { chat: { postMessage } },
+    } as any);
+    expect((await tasks.findById('task'))?.status).toBe('awaiting_approval');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('Only the person') }),
+    );
+  });
+
   it('lets the original requester cancel an active task', async () => {
     await tasks.updateStatus('task', 'working');
     const createComment = vi.fn().mockResolvedValue({});
