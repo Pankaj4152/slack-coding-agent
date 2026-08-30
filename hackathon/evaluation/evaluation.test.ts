@@ -52,8 +52,12 @@ function passingObservation(overrides: Partial<Observation> = {}): Observation {
     checks: [{ command: 'npm test', passed: true, evidence: '40 tests passed.' }],
     repositoryChanged: true,
     firstAttempt: true,
+    elapsedMinutes: 8,
     humanMinutes: 2,
     costUsd: 0.12,
+    providerInvocations: 3,
+    repairAttempted: false,
+    recoveredByRepair: false,
     notes: '',
     ...overrides,
   };
@@ -75,6 +79,10 @@ describe('hackathon evaluation', () => {
       verifiedCases: 1,
       verifiedCompletionRate: 100,
       firstAttemptSuccessRate: 100,
+      completedCases: 1,
+      pendingCases: 0,
+      averageElapsedMinutes: 8,
+      providerInvocationsPerTask: 3,
       totalHumanMinutes: 2,
       totalCostUsd: 0.12,
     });

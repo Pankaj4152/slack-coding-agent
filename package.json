@@ -13,6 +13,7 @@
     "start": "node dist/index.js",
     "db:migrate": "tsx src/db/migrate.ts",
     "evaluate:baseline": "tsx hackathon/evaluation/run-baseline.ts",
+    "evaluate:final": "tsx hackathon/evaluation/run-final.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",

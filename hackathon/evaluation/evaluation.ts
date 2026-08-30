@@ -22,29 +22,37 @@ export const evaluationCaseSchema = z.object({
   allowsRepositoryChanges: z.boolean(),
 });
 
-export const observationSchema = z.object({
-  caseId: z.string().min(1),
-  observedOutcome: outcomeSchema,
-  acceptanceEvidence: z.array(
-    z.object({
-      criterion: z.string().min(1),
-      passed: z.boolean(),
-      evidence: z.string(),
-    }),
-  ),
-  checks: z.array(
-    z.object({
-      command: z.string().min(1),
-      passed: z.boolean(),
-      evidence: z.string(),
-    }),
-  ),
-  repositoryChanged: z.boolean(),
-  firstAttempt: z.boolean(),
-  humanMinutes: z.number().nonnegative(),
-  costUsd: z.number().nonnegative(),
-  notes: z.string(),
-});
+export const observationSchema = z
+  .object({
+    caseId: z.string().min(1),
+    observedOutcome: outcomeSchema,
+    acceptanceEvidence: z.array(
+      z.object({
+        criterion: z.string().min(1),
+        passed: z.boolean(),
+        evidence: z.string(),
+      }),
+    ),
+    checks: z.array(
+      z.object({
+        command: z.string().min(1),
+        passed: z.boolean(),
+        evidence: z.string(),
+      }),
+    ),
+    repositoryChanged: z.boolean(),
+    firstAttempt: z.boolean(),
+    elapsedMinutes: z.number().nonnegative().default(0),
+    humanMinutes: z.number().nonnegative(),
+    costUsd: z.number().nonnegative(),
+    providerInvocations: z.number().int().nonnegative().default(0),
+    repairAttempted: z.boolean().default(false),
+    recoveredByRepair: z.boolean().default(false),
+    notes: z.string(),
+  })
+  .refine((value) => !value.recoveredByRepair || value.repairAttempted, {
+    message: 'recoveredByRepair requires repairAttempted',
+  });
 
 export type EvaluationCase = z.infer<typeof evaluationCaseSchema>;
 export type Observation = z.infer<typeof observationSchema>;
@@ -79,11 +87,22 @@ export interface CaseScore {
 
 export interface EvaluationSummary {
   totalCases: number;
+  completedCases: number;
+  pendingCases: number;
   verifiedCases: number;
   verifiedCompletionRate: number;
   firstAttemptSuccessRate: number;
+  clarificationPrecision: number;
+  averageElapsedMinutes: number;
   totalHumanMinutes: number;
+  humanMinutesPerTask: number;
   totalCostUsd: number;
+  costPerTaskUsd: number;
+  totalProviderInvocations: number;
+  providerInvocationsPerTask: number;
+  repairAttempts: number;
+  repairRecoveries: number;
+  repairRecoveryRate: number;
   cases: CaseScore[];
 }
 
@@ -125,8 +144,12 @@ export function createObservationTemplate(cases: EvaluationCase[]): Observation[
     })),
     repositoryChanged: false,
     firstAttempt: false,
+    elapsedMinutes: 0,
     humanMinutes: 0,
     costUsd: 0,
+    providerInvocations: 0,
+    repairAttempted: false,
+    recoveredByRepair: false,
     notes: '',
   }));
 }
@@ -148,14 +171,40 @@ export function evaluate(cases: EvaluationCase[], observations: Observation[]): 
   const firstAttemptVerified = verified.filter(
     (score) => observationsByCase.get(score.caseId)?.firstAttempt,
   );
+  const completed = observations.filter((item) => item.observedOutcome !== 'not-run');
+  const observedClarifications = completed.filter(
+    (item) => item.observedOutcome === 'clarification',
+  );
+  const correctClarifications = observedClarifications.filter(
+    (item) => cases.find((candidate) => candidate.id === item.caseId)?.requiresClarification,
+  );
+  const repairAttempts = completed.filter((item) => item.repairAttempted);
+  const repairRecoveries = repairAttempts.filter((item) => item.recoveredByRepair);
+  const totalHumanMinutes = round(completed.reduce((sum, item) => sum + item.humanMinutes, 0));
+  const totalCostUsd = round(completed.reduce((sum, item) => sum + item.costUsd, 0));
+  const totalProviderInvocations = completed.reduce(
+    (sum, item) => sum + item.providerInvocations,
+    0,
+  );
 
   return {
     totalCases: cases.length,
+    completedCases: completed.length,
+    pendingCases: cases.length - completed.length,
     verifiedCases: verified.length,
     verifiedCompletionRate: rate(verified.length, cases.length),
     firstAttemptSuccessRate: rate(firstAttemptVerified.length, cases.length),
-    totalHumanMinutes: observations.reduce((sum, item) => sum + item.humanMinutes, 0),
-    totalCostUsd: round(observations.reduce((sum, item) => sum + item.costUsd, 0)),
+    clarificationPrecision: rate(correctClarifications.length, observedClarifications.length),
+    averageElapsedMinutes: average(completed.map((item) => item.elapsedMinutes)),
+    totalHumanMinutes,
+    humanMinutesPerTask: average(completed.map((item) => item.humanMinutes)),
+    totalCostUsd,
+    costPerTaskUsd: average(completed.map((item) => item.costUsd)),
+    totalProviderInvocations,
+    providerInvocationsPerTask: average(completed.map((item) => item.providerInvocations)),
+    repairAttempts: repairAttempts.length,
+    repairRecoveries: repairRecoveries.length,
+    repairRecoveryRate: rate(repairRecoveries.length, repairAttempts.length),
     cases: scores,
   };
 }
@@ -198,9 +247,14 @@ export function renderMarkdownReport(manifest: RunManifest, summary: EvaluationS
 | Metric | Result |
 | --- | ---: |
 | Verified completion | ${summary.verifiedCases}/${summary.totalCases} (${summary.verifiedCompletionRate}%) |
+| Cases executed | ${summary.completedCases}/${summary.totalCases} (${summary.pendingCases} pending) |
 | First-attempt success rate | ${summary.firstAttemptSuccessRate}% |
-| Total human time | ${summary.totalHumanMinutes} minutes |
-| Estimated provider cost | $${summary.totalCostUsd.toFixed(2)} |
+| Clarification precision | ${summary.clarificationPrecision}% |
+| Average elapsed time | ${summary.averageElapsedMinutes} minutes |
+| Human time per task | ${summary.humanMinutesPerTask} minutes |
+| Provider invocations per task | ${summary.providerInvocationsPerTask} |
+| Estimated provider cost per task | $${summary.costPerTaskUsd.toFixed(2)} |
+| Repair recovery | ${summary.repairRecoveries}/${summary.repairAttempts} (${summary.repairRecoveryRate}%) |
 
 ## Per-case results
 
@@ -259,6 +313,12 @@ function rate(numerator: number, denominator: number): number {
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function average(values: number[]): number {
+  return values.length === 0
+    ? 0
+    : round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
 function escapeTable(value: string): string {
