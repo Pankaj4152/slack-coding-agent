@@ -15,6 +15,7 @@ Slack is where a developer request begins, but the request may be incomplete and
 - [Planner design](./PLANNER_DESIGN.md)
 - [Verifier design](./VERIFIER_DESIGN.md)
 - [Repair loop design](./REPAIR_LOOP_DESIGN.md)
+- [Human approval and progress design](./HUMAN_APPROVAL_DESIGN.md)
 - [Video script](./VIDEO_SCRIPT.md)
 - [Evaluation cases](./evaluation/cases.json)
 
