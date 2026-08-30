@@ -181,6 +181,18 @@ In the target repository, open **Settings → Actions → General**:
 
 The GitHub App must be installed on the repository, and its exact `owner/repository` name must appear in Render's `ALLOWED_REPOSITORIES`.
 
+To require approval of the exact generated plan before any code edits, create these repository Actions variables:
+
+```text
+Name: CODING_AGENT_REQUIRE_APPROVAL
+Value: true
+
+Name: CODING_AGENT_APPROVAL_BOT_LOGIN
+Value: your-github-app-slug[bot]
+```
+
+Use the exact bot login that posts GitHub issue comments for this service. When enabled, the workflow pauses after planning and asks the original requester to reply `approve` or `cancel` in Slack. Approval is bound to the current plan fingerprint; a changed plan requires fresh approval.
+
 ## 7. Choose Codex or Gemini
 
 Provider selection is configured separately in every target repository under **Settings → Secrets and variables → Actions → Variables**.
@@ -260,7 +272,7 @@ Slack validates the repository
 → Slack receives the pull-request link
 ```
 
-If the task fails, the original requester can reply `retry`. While a task is active, the requester can reply `cancel` to prevent branch and pull-request publication.
+If approval is enabled, the original requester replies `approve` after reviewing the plan. If the task fails, the requester can reply `retry`. While a task is active or awaiting approval, the requester can reply `cancel` to prevent branch and pull-request publication.
 
 ## 9. Troubleshooting
 

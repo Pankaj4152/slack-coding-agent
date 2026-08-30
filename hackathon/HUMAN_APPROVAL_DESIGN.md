@@ -1,5 +1,7 @@
 # Human Approval and Progress Design
 
+Implementation status: completed on `PRobe` in `cc05301`, `2f882f6`, and `ba5e511`. Controlled measurements remain pending.
+
 ## Purpose
 
 Phase 7 adds an optional human checkpoint after planning and before repository edits. It also makes the approval state visible in the original Slack thread. The existing human PR review remains mandatory, and the system never merges automatically.

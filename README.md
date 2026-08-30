@@ -28,9 +28,10 @@ The normal flow is:
 2. The service validates the repository allowlist, creates labels and an issue, and stores the mapping.
 3. Label `agent-ready` starts the target repository workflow.
 4. A read-only planner inspects the issue conversation, `AGENTS.md`, and repository context. It produces acceptance criteria and an implementation plan or asks one clarification question.
-5. The selected Codex or Gemini coding provider receives the approved plan, edits and validates the checkout, and returns structured output.
-6. Deterministic workflow steps create a branch, commit, push, and PR. Agents do not perform GitHub state changes.
-7. GitHub sends an `issue_comment` or `pull_request` webhook, and the service posts progress, clarification, or the pull request into the original Slack thread.
+5. Repositories may optionally require the original requester to approve the exact plan fingerprint before coding begins.
+6. The selected Codex or Gemini coding provider receives the approved plan, edits and validates the checkout, and returns structured output.
+7. Deterministic workflow steps create a branch, commit, push, and PR. Agents do not perform GitHub state changes.
+8. GitHub sends an `issue_comment` or `pull_request` webhook, and the service posts planning, approval, coding, validation, repair, verification, clarification, failure, or PR progress into the original Slack thread.
 
 For clarification, the planner or coding agent comments with `<!-- agent-question -->` and applies `agent-needs-input`. The first human thread reply is posted to the issue, the label changes back to `agent-ready`, and a fresh workflow run reads the full conversation. Failures use `<!-- agent-failed -->`; this explicit final workflow step avoids unreliable `workflow_run` correlation.
 
@@ -86,8 +87,10 @@ The service automatically ensures these labels exist whenever it creates a task:
 - `agent-ready`
 - `agent-working`
 - `agent-needs-input`
+- `agent-awaiting-approval`
 - `agent-pr-created`
 - `agent-failed`
+- `agent-cancelled`
 
 ## Repository allowlist
 
@@ -110,6 +113,8 @@ npx tsx scripts/install-workflow.ts /path/to/target-repository
 This copies `templates/coding-agent.yml` to `.github/workflows/coding-agent.yml` and creates `AGENTS.md` only if one is absent. Review `AGENTS.md`, fill in exact setup and validation commands, then commit both files.
 
 Alternatively, copy the two templates manually. In the target repository, set the Actions variable `CODING_AGENT_PROVIDER` to `codex` or `gemini`; Codex is the default. Add the matching Actions secret: `OPENAI_API_KEY` for Codex or `GEMINI_API_KEY` for Gemini. Gemini uses `gemini-3.1-flash-lite`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**.
+
+To require requester approval after planning and before code edits, set `CODING_AGENT_REQUIRE_APPROVAL=true`. Set `CODING_AGENT_APPROVAL_BOT_LOGIN` to the exact bot login used by this service's GitHub App (the default is `pankaj-slack-coding-agent[bot]`). The workflow accepts approval only from that bot and only when its SHA-256 fingerprint matches the freshly generated plan.
 
 Each successful workflow attempt uses the selected provider for a read-only planning pass, a coding pass, and an independent read-only verification pass. If verification returns actionable `NEEDS_FIX` evidence, the workflow permits exactly one focused repair pass followed by fresh deterministic checks and a fresh read-only verifier. Account for three provider invocations normally and up to five when repair is used. A clarification or rejected plan stops before coding; provider failure, cancellation, and untrustworthy verification output stop without automatic repair.
 
@@ -187,7 +192,7 @@ When the bot asks a question, reply in the same Slack thread. Only the first val
 
 The service checks GitHub App access, repository state, Issues availability, and the presence of `.github/workflows/coding-agent.yml` before creating a task. Workflow start, clarification, failure, completion, and pull-request updates are posted back to the original Slack thread. When Codex fails, the workflow safely distinguishes exhausted API credits, an invalid API key, and temporary rate limiting so Slack receives an actionable reason.
 
-If a task fails, the original requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot retry someone else's task. The requester can reply `cancel` while a task is active to prevent the workflow from publishing a branch or pull request.
+If approval is enabled, only the original requester can reply with exactly `approve`; a changed plan requires approval again. If a task fails, the requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot approve or retry someone else's task. The requester can reply `cancel` while a task is active or awaiting approval to prevent the workflow from publishing a branch or pull request.
 
 ## Troubleshooting
 
@@ -196,6 +201,7 @@ If a task fails, the original requester can reply with exactly `retry` in the sa
 - **No workflow run:** confirm the template is installed on the default branch, the issue has `agent-ready`, Actions is enabled, and labels exist.
 - **Codex fails immediately:** confirm `OPENAI_API_KEY` is an Actions secret in the target repository/organization.
 - **Task fails and needs another attempt:** reply `retry` in the original Slack thread as the user who created the task.
+- **Plan is awaiting approval:** reply `approve` in the original Slack thread as the user who created the task.
 - **Cancel an active task:** reply `cancel` in the original Slack thread as the user who created the task.
 - **No Slack reply:** invite the bot to the channel and verify the matching message history scope/event.
 - **Webhook returns 401:** the GitHub App and service must use the identical webhook secret; proxies must preserve the raw request body.
@@ -219,7 +225,7 @@ Issue and comment content is untrusted prompt input. The workflow passes it thro
 - No automatic merge or deployment
 - No persistent Codex session; clarification starts a new workflow run
 - No persistent planner session; retries and clarification reruns rebuild the plan from the full issue conversation
-- Verification failures stop safely; automatic verification-driven repair is not enabled
+- Verification permits one bounded evidence-driven repair; a second failure stops for manual retry
 - SQLite supports one service instance only; no high availability
 - No retry queue, dashboard, sophisticated permission engine, or PR review-feedback automation
 - Workflow dependency setup is repository-specific and must be documented in target `AGENTS.md`
