@@ -1,15 +1,17 @@
 export const markers = {
   started: '<!-- agent-started -->',
   planned: '<!-- agent-plan -->',
+  verified: '<!-- agent-verification -->',
   question: '<!-- agent-question -->',
   completed: '<!-- agent-completed -->',
   failed: '<!-- agent-failed -->',
 } as const;
 
-export function parseAgentMarker(
-  body: string,
-):
-  | { type: 'started' | 'planned' | 'question' | 'completed' | 'failed'; content: string }
+export function parseAgentMarker(body: string):
+  | {
+      type: 'started' | 'planned' | 'verified' | 'question' | 'completed' | 'failed';
+      content: string;
+    }
   | undefined {
   for (const [type, marker] of Object.entries(markers) as [keyof typeof markers, string][]) {
     const index = body.indexOf(marker);

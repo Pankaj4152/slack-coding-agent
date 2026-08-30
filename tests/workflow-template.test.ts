@@ -66,4 +66,12 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('pre-verifier-status.txt');
     expect(template).toContain("steps.verifier.outputs.status == 'PASS'");
   });
+
+  it('reports verification evidence to Slack and the PR', () => {
+    expect(template).toContain('<!-- agent-verification -->');
+    expect(template).toContain('Confidence: ${verifier.confidence}%');
+    expect(template).toContain('verifier-result-final.json');
+    expect(template).toContain('## Independent verification');
+    expect(template).toContain('## Deterministic checks');
+  });
 });

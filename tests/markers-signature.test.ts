@@ -10,6 +10,7 @@ describe('agent markers', () => {
       content: 'Which format?',
     });
     expect(parseAgentMarker('<!-- agent-plan --> ready')?.type).toBe('planned');
+    expect(parseAgentMarker('<!-- agent-verification --> pass')?.type).toBe('verified');
     expect(parseAgentMarker('<!-- agent-completed --> done')?.type).toBe('completed');
     expect(parseAgentMarker('<!-- agent-failed --> nope')?.type).toBe('failed');
     expect(parsePrTaskMarker('<!-- agent-pr task-id="abc" issue="42" -->')).toEqual({

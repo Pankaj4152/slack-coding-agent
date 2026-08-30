@@ -614,6 +614,22 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `confidence=${verifier.confidence}\n`);
           NODE
 
+      - name: Report passing verification
+        if: steps.verifier.outputs.status == 'PASS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const verifier = JSON.parse(fs.readFileSync('.codex-task/normalized-verifier-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
+          const summary = String(verifier.summary || 'Independent verification passed.').replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]').slice(0, 800);
+          const passedChecks = checks.results.filter((check) => check.passed).length;
+          const body = `<!-- agent-verification -->\n\n${summary}\n\nConfidence: ${verifier.confidence}% · Deterministic checks: ${passedChecks}/${checks.results.length} passed.`;
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', body);
+          NODE
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+
       - name: Create branch and pull request
         id: create_pr
         if: steps.result.outputs.status == 'COMPLETED' && steps.verifier.outputs.status == 'PASS'
@@ -624,6 +640,8 @@ jobs:
         run: |
           cp .codex-task/normalized-result.json "$RUNNER_TEMP_DIR/agent-result-final.json"
           cp .codex-task/normalized-planner-result.json "$RUNNER_TEMP_DIR/planner-result-final.json"
+          cp .codex-task/normalized-verifier-result.json "$RUNNER_TEMP_DIR/verifier-result-final.json"
+          cp .codex-task/deterministic-validation.json "$RUNNER_TEMP_DIR/deterministic-validation-final.json"
           rm -rf .codex-task
           if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
             echo "cancelled=true" >> "$GITHUB_OUTPUT"
@@ -647,6 +665,8 @@ jobs:
           const issue = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/agent-issue-final.json'));
           const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/agent-result-final.json'));
           const planner = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/planner-result-final.json'));
+          const verifier = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/verifier-result-final.json'));
+          const checks = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP_DIR + '/deterministic-validation-final.json'));
           const match = (issue.body || '').match(/<!-- slack-agent-metadata\s*([\s\S]*?)-->/);
           if (!match) throw new Error('Missing metadata');
           const metadata = JSON.parse(match[1]);
@@ -655,6 +675,10 @@ jobs:
           const bullets = (values, empty) => Array.isArray(values) && values.length
             ? values.map((value) => `- ${safe(value)}`).join('\n')
             : `- ${empty}`;
+          const criterionEvidence = verifier.criteria.map((item) => `- **${safe(item.status)}** ${safe(item.criterion)} — ${safe(item.evidence)}`).join('\n');
+          const checkEvidence = checks.results.length
+            ? checks.results.map((item) => `- **${item.passed ? 'PASS' : 'FAIL'}** \`${safe(item.command)}\` (${item.durationMs} ms, exit ${item.exitCode ?? 'none'})`).join('\n')
+            : '- No deterministic commands were configured or discovered.';
           const body = `## Summary
 
           ${safe(result.summary)}
@@ -666,6 +690,14 @@ jobs:
           ## Validation reported by the coding agent
 
           ${bullets(result.validation, 'No validation was reported.')}
+
+          ## Independent verification (${verifier.confidence}% confidence)
+
+          ${criterionEvidence}
+
+          ## Deterministic checks
+
+          ${checkEvidence}
 
           ## Risks
 

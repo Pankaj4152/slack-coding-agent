@@ -129,6 +129,28 @@ describe('GithubWebhookHandler', () => {
     );
   });
 
+  it('forwards a passing verification report without changing the working state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-verification', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 60,
+        body: '<!-- agent-verification -->\n\nVerification passed with 92% confidence.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: 'Verification passed with 92% confidence.',
+      }),
+    );
+  });
+
   it('posts an opened PR in the mapped Slack thread', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('pull_request', 'delivery-pr', {

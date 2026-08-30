@@ -66,6 +66,16 @@ export class GithubWebhookHandler {
       return;
     }
 
+    if (marker.type === 'verified') {
+      if (task.status !== 'working') return;
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text: marker.content || 'Independent verification passed.',
+      });
+      return;
+    }
+
     if (marker.type === 'question') {
       if (!marker.content) return;
       if (task.lastAgentQuestionCommentId === payload.comment.id) return;
