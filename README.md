@@ -2,6 +2,12 @@
 
 An internal MVP that turns a Slack mention into a GitHub issue, runs Codex or Gemini in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
 
+## Intended user and bottleneck
+
+This project is for small engineering teams that already coordinate work in Slack but cannot afford to have every incomplete request manually translated into repository context, acceptance criteria, implementation steps, validation, and a reviewable pull request. The bottleneck is not typing code alone: it is preserving intent across Slack and GitHub, asking for missing decisions at the right time, following repository-specific instructions, proving that the change works, and keeping consequential publication under human control.
+
+The workflow turns one mapped Slack thread into an auditable GitHub task. Separate planning, coding, deterministic validation, independent verification, one bounded repair, and optional plan approval reduce the amount of unverified agent output a developer must untangle. The useful final result is evidence attached to a human-reviewed pull request, never an automatic merge.
+
 For the complete Slack, GitHub App, Render, database, and target-repository walkthrough, see [Setup from scratch](docs/SETUP_FROM_SCRATCH.md).
 
 ## Architecture and workflow

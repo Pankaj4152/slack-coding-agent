@@ -2,6 +2,8 @@
 
 Representative trajectories will be added for every agent used by the final workflow.
 
+Start each captured run from [`trajectories/TRAJECTORY_TEMPLATE.md`](./trajectories/TRAJECTORY_TEMPLATE.md). Keep drafts under this hackathon folder only after redaction; raw provider logs and private artifacts must remain outside Git.
+
 ## Planner trajectory
 
 Capture the planner prompt, provider, normalized planner JSON, repository reads, and resulting `READY`, `NEEDS_CLARIFICATION`, or `REJECTED` decision. For `READY`, connect each acceptance criterion to coding and verification evidence. For clarification, include the Slack answer and the fresh plan produced on rerun.

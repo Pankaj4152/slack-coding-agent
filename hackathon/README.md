@@ -6,6 +6,12 @@ This folder contains material prepared specifically for the micro1 Agentic Workf
 
 Slack is where a developer request begins, but the request may be incomplete and the resulting code change needs evidence before a human reviews it. This project is evolving from a Slack-to-GitHub task handoff into a controlled workflow that plans, clarifies, implements, verifies, and reports software changes without merging automatically.
 
+## User and practical value
+
+The intended user is a developer or engineering lead on a small team whose requests begin in Slack. Today that person must repeatedly reconstruct intent, repository rules, validation evidence, and task status across tools. The project makes that handoff explicit and reviewable while preserving requester-only clarification, approval, retry, cancellation, and mandatory human PR review.
+
+The baseline performs a direct coding pass after repository preflight. The candidate adds purposeful stages only where they create a safety or evidence boundary: read-only planning, trusted deterministic checks, independent read-only verification, one bounded evidence-driven repair, and optional approval bound to the exact plan. The controlled evaluation will determine whether those extra provider calls are justified by verified completion gains.
+
 ## Hackathon material
 
 - [Improvement changelog](./IMPROVEMENT_CHANGELOG.md)
@@ -17,6 +23,9 @@ Slack is where a developer request begins, but the request may be incomplete and
 - [Repair loop design](./REPAIR_LOOP_DESIGN.md)
 - [Human approval and progress design](./HUMAN_APPROVAL_DESIGN.md)
 - [Evaluation automation design](./EVALUATION_AUTOMATION_DESIGN.md)
+- [Judging rubric map](./JUDGING_MAP.md)
+- [Submission evidence index](./EVIDENCE_INDEX.md)
+- [Final submission checklist](./SUBMISSION_CHECKLIST.md)
 - [Video script](./VIDEO_SCRIPT.md)
 - [Evaluation cases](./evaluation/cases.json)
 
