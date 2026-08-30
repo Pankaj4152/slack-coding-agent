@@ -36,3 +36,4 @@ These documents will be updated with measured results as each implementation pha
 - Controlled repair-loop measurements and representative recovery/failure trajectories are still pending.
 - Optional plan-bound requester approval and explicit coding/validation Slack progress are implemented without changing the mandatory human PR review or no-automatic-merge contract.
 - Controlled end-to-end measurements remain the next submission milestone.
+- Symmetric baseline/final scoring and fail-closed comparison automation are implemented; no unexecuted case is presented as measured evidence.

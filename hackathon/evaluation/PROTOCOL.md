@@ -91,16 +91,19 @@ Keep enough stable synthetic identifiers to connect each trajectory to its evalu
 
 ## 8. Score and preserve results
 
-Generate the observation file once:
+Generate both observation files once:
 
 ```text
 npm run evaluate:baseline -- init
+npm run evaluate:final -- init
 ```
 
-Fill it as cases finish, then calculate the summary:
+Fill them as cases finish, then calculate both summaries and the controlled comparison:
 
 ```text
-npm run evaluate:baseline
+npm run evaluate:baseline -- report
+npm run evaluate:final -- report
+npm run evaluate:compare
 ```
 
 Review and redact the ignored result files before copying selected evidence into a tracked submission document. Report all ten case outcomes, including failures and timeouts.

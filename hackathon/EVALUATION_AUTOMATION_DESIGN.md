@@ -1,5 +1,7 @@
 # Controlled Evaluation Automation Design
 
+Implementation status: completed on `PRobe` in `325ec2a`, `1322b4a`, and `e7ca534`. Controlled live runs remain pending.
+
 ## Purpose
 
 Phase 8 turns the existing baseline scorer into a symmetric baseline/final comparison pipeline. It automates evidence validation and arithmetic while keeping live provider execution manual and controlled. Missing observations remain failures and are never replaced with inferred or fabricated results.
