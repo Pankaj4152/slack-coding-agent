@@ -1,0 +1,19 @@
+{
+  "runId": "baseline-YYYYMMDD-01",
+  "workflow": "baseline",
+  "applicationCommit": "63ff730",
+  "caseFileCommit": "7bd9369",
+  "provider": "codex-or-gemini",
+  "model": "record-exact-model",
+  "providerTier": "record-free-or-paid-tier",
+  "runner": "ubuntu-latest",
+  "nodeVersion": "20.x-exact-version",
+  "startedAtUtc": "YYYY-MM-DDTHH:mm:ssZ",
+  "timeoutMinutesPerAttempt": 60,
+  "maximumAttemptsPerCase": 1,
+  "targetRepository": "synthetic-owner/synthetic-repository",
+  "startingCommit": "full-target-starting-commit",
+  "pricingSourceAndDate": "provider pricing URL and YYYY-MM-DD access date",
+  "controlledDifferences": [],
+  "notes": "Direct coding baseline. Do not add planner, verifier, or repair behavior."
+}

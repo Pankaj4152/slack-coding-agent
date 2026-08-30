@@ -33,7 +33,11 @@ const requiredFiles = [
   'hackathon/JUDGING_MAP.md',
   'hackathon/EVIDENCE_INDEX.md',
   'hackathon/SUBMISSION_CHECKLIST.md',
+  'hackathon/CLEAN_ENVIRONMENT_REHEARSAL.md',
   'hackathon/evaluation/cases.json',
+  'hackathon/evaluation/LIVE_RUN_WORKSHEET.md',
+  'hackathon/evaluation/baseline-manifest.example.json',
+  'hackathon/evaluation/final-manifest.example.json',
   'hackathon/evaluation/run-manifest.example.json',
   '.github/workflows/coding-agent.yml',
   'templates/coding-agent.yml',
@@ -114,6 +118,7 @@ function main(): void {
 
   assessEvaluation(results, items);
   assessTrajectories(root, items);
+  assessCleanRehearsal(root, items);
   assessPlaceholders(root, items);
   assessTrackedFiles(root, items);
 
@@ -129,6 +134,18 @@ function main(): void {
   );
   console.log(`Report: ${resolve(results, 'submission-readiness.md')}`);
   if (report.status === 'FAIL') process.exitCode = 1;
+}
+
+function assessCleanRehearsal(root: string, items: ReadinessItem[]): void {
+  const record = readFileSync(resolve(root, 'hackathon', 'CLEAN_ENVIRONMENT_REHEARSAL.md'), 'utf8');
+  const pending = record.includes('Status: **PENDING EXECUTION**');
+  items.push({
+    area: 'Clean-environment rehearsal',
+    status: pending ? 'PENDING' : 'PASS',
+    detail: pending
+      ? 'Rehearsal template exists but has not been completed.'
+      : 'Rehearsal record is marked complete.',
+  });
 }
 
 function assessEvaluation(results: string, items: ReadinessItem[]): void {

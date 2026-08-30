@@ -28,6 +28,8 @@ The baseline performs a direct coding pass after repository preflight. The candi
 - [Final submission checklist](./SUBMISSION_CHECKLIST.md)
 - [Video script](./VIDEO_SCRIPT.md)
 - [Evaluation cases](./evaluation/cases.json)
+- [Controlled live-run worksheet](./evaluation/LIVE_RUN_WORKSHEET.md)
+- [Clean-environment rehearsal record](./CLEAN_ENVIRONMENT_REHEARSAL.md)
 
 These documents will be updated with measured results as each implementation phase is completed. No result should be described as final until it has been reproduced using the documented commands.
 
@@ -38,6 +40,14 @@ npm run submission:check
 ```
 
 It writes ignored JSON and Markdown reports under `hackathon/results/`. `PENDING` means external evidence is still required; `FAIL` means a repository or evidence-integrity defect must be fixed before submission.
+
+Generate four representative, ignored trajectory drafts after live runs begin:
+
+```text
+npm run trajectories:init
+```
+
+The generator preserves existing drafts. Redact and complete them before deliberately copying final trajectories into the tracked `hackathon/trajectories/` folder.
 
 ## Current progress
 

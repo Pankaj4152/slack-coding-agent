@@ -23,6 +23,9 @@ Use this index as the single navigation page when assembling the final HackerEar
 - Evaluation runner instructions: [`evaluation/README.md`](./evaluation/README.md)
 - Fixed evaluation cases: [`evaluation/cases.json`](./evaluation/cases.json)
 - Manifest template: [`evaluation/run-manifest.example.json`](./evaluation/run-manifest.example.json)
+- Baseline/final manifest templates: [`evaluation/baseline-manifest.example.json`](./evaluation/baseline-manifest.example.json) and [`evaluation/final-manifest.example.json`](./evaluation/final-manifest.example.json)
+- Live execution worksheet: [`evaluation/LIVE_RUN_WORKSHEET.md`](./evaluation/LIVE_RUN_WORKSHEET.md)
+- Clean rehearsal record: [`CLEAN_ENVIRONMENT_REHEARSAL.md`](./CLEAN_ENVIRONMENT_REHEARSAL.md)
 - Pending: clean-environment rehearsal record with actual runtime and cost.
 
 ## Deliverable 3: solution video
@@ -33,6 +36,7 @@ Use this index as the single navigation page when assembling the final HackerEar
 ## Deliverable 4: agent trajectories
 
 - Capture specification: [`AGENT_TRAJECTORIES.md`](./AGENT_TRAJECTORIES.md)
+- Draft generator: `npm run trajectories:init` (writes ignored files under `hackathon/results/trajectory-drafts/`).
 - Pending: redacted planner trajectory.
 - Pending: redacted coding trajectory.
 - Pending: redacted verifier `PASS` and `NEEDS_FIX` trajectories.

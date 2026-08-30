@@ -16,6 +16,7 @@
     "evaluate:final": "tsx hackathon/evaluation/run-final.ts",
     "evaluate:compare": "tsx hackathon/evaluation/compare.ts",
     "submission:check": "tsx hackathon/submission-readiness.ts",
+    "trajectories:init": "tsx hackathon/trajectory-drafts.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",

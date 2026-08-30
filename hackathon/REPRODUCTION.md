@@ -18,6 +18,8 @@ npm test
 
 Use an approved disposable target repository with synthetic data. Pin baseline application behavior to commit `63ff730`, complete a run manifest, and follow the full [execution protocol](./evaluation/PROTOCOL.md).
 
+Use the separate baseline/final manifest examples and the [live-run worksheet](./evaluation/LIVE_RUN_WORKSHEET.md) to freeze controlled conditions before the first provider call. Record a second-person setup rehearsal in [CLEAN_ENVIRONMENT_REHEARSAL.md](./CLEAN_ENVIRONMENT_REHEARSAL.md).
+
 Create the ignored observation templates:
 
 ```text
