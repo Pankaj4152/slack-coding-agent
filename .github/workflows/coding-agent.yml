@@ -90,7 +90,7 @@ jobs:
           ${comments.map((comment) => `By ${comment.user?.login || 'unknown'}:\n${comment.body || ''}`).join('\n\n---\n\n')}
           `;
           fs.writeFileSync('.codex-task/planner-prompt.md', prompt, { mode: 0o600 });
-          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngha-creds-*.json\n');
+          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngemini-artifacts/\ngha-creds-*.json\n');
           NODE
 
       - name: Run Codex planner
@@ -171,6 +171,7 @@ jobs:
           if (planner.status === 'NEEDS_CLARIFICATION' && !String(planner.question || '').trim()) planner.status = 'FAILED';
           const changes = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
           if (changes) {
+            console.error('Planner workspace changes:', JSON.stringify(changes.split('\n').slice(0, 20)));
             planner.status = 'FAILED';
             planner.summary = 'The planner modified repository files during its read-only planning pass.';
           }
