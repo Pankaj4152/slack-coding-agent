@@ -464,9 +464,159 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `passed=${report.passed}\n`);
           NODE
 
+      - name: Build verifier prompt
+        if: steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const childProcess = require('child_process');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const coding = JSON.parse(fs.readFileSync('.codex-task/normalized-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
+          const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          const stat = childProcess.execFileSync('git', ['diff', '--stat'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40'], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+          const diff = rawDiff.length > 120000 ? `${rawDiff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : rawDiff;
+          const prompt = `You are independently verifying a coding-agent change. Do not edit repository files.
+
+          Decide whether the implementation satisfies every planned acceptance criterion, matches the requested scope, includes appropriate tests, and is supported by deterministic checks. Coding-agent claims are context, not proof.
+
+          Rules:
+          - PASS requires exact coverage of every acceptance criterion with specific evidence.
+          - Any failed/timed-out check, empty evidence, missing test, or scope issue requires NEEDS_FIX.
+          - Use FAILED only when a trustworthy verification decision cannot be produced.
+          - Do not repair files, expose secrets, run unapproved commands, commit, push, or create a PR.
+          - Return output matching the supplied JSON schema.
+
+          APPROVED PLAN:
+          ${JSON.stringify(planner, null, 2)}
+
+          CODING RESULT:
+          ${JSON.stringify(coding, null, 2)}
+
+          DETERMINISTIC VALIDATION:
+          ${JSON.stringify(checks, null, 2)}
+
+          GIT STATUS:
+          ${status}
+
+          DIFF STAT:
+          ${stat}
+
+          DIFF:
+          ${diff}`;
+          fs.writeFileSync('.codex-task/pre-verifier-status.txt', status);
+          fs.writeFileSync('.codex-task/verifier-prompt.md', prompt, { mode: 0o600 });
+          NODE
+
+      - name: Run Codex verifier
+        id: verifier_codex
+        if: env.AGENT_PROVIDER == 'codex' && steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .codex-task/verifier-prompt.md
+          output-file: .codex-task/verifier-result.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          allow-bots: true
+          allow-bot-users: pankaj-slack-coding-agent[bot]
+          output-schema: |
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "summary", "criteria", "checksReviewed", "scopeIssues", "risks", "confidence"],
+              "properties": {
+                "status": {"type": "string", "enum": ["PASS", "NEEDS_FIX", "FAILED"]},
+                "summary": {"type": "string"},
+                "criteria": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["criterion", "status", "evidence"],
+                    "properties": {
+                      "criterion": {"type": "string"},
+                      "status": {"type": "string", "enum": ["PASS", "FAIL", "UNKNOWN"]},
+                      "evidence": {"type": "string"}
+                    }
+                  }
+                },
+                "checksReviewed": {"type": "array", "items": {"type": "string"}},
+                "scopeIssues": {"type": "array", "items": {"type": "string"}},
+                "risks": {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "integer", "minimum": 0, "maximum": 100}
+              }
+            }
+
+      - name: Run Gemini verifier
+        id: verifier_gemini
+        if: env.AGENT_PROVIDER == 'gemini' && steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
+        continue-on-error: true
+        uses: google-github-actions/run-gemini-cli@v0
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_model: gemini-3.1-flash-lite
+          prompt: |
+            @.codex-task/verifier-prompt.md
+
+            Verify only. Do not edit repository files. Write the result to .codex-task/verifier-result.json as valid JSON with exactly these fields: status, summary, criteria, checksReviewed, scopeIssues, risks, and confidence.
+          settings: |
+            {
+              "model": { "maxSessionTurns": 30 },
+              "telemetry": { "enabled": false }
+            }
+
+      - name: Normalize verifier result
+        id: verifier
+        if: always() && steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
+        env:
+          PROVIDER: ${{ env.AGENT_PROVIDER }}
+          CODEX_OUTCOME: ${{ steps.verifier_codex.outcome }}
+          GEMINI_OUTCOME: ${{ steps.verifier_gemini.outcome }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const childProcess = require('child_process');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
+          const providerOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          let verifier;
+          try {
+            verifier = JSON.parse(fs.readFileSync('.codex-task/verifier-result.json', 'utf8'));
+          } catch {
+            verifier = { status: 'FAILED', summary: 'The verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+          }
+          if (providerOutcome !== 'success') {
+            verifier.status = 'FAILED';
+            verifier.summary = `The ${process.env.PROVIDER || 'coding'} verifier could not complete its review.`;
+          }
+          if (!['PASS', 'NEEDS_FIX', 'FAILED'].includes(verifier.status)) verifier.status = 'FAILED';
+          if (!Array.isArray(verifier.criteria) || !Array.isArray(verifier.checksReviewed) || !Array.isArray(verifier.scopeIssues) || !Array.isArray(verifier.risks)) verifier.status = 'FAILED';
+          if (!Number.isInteger(verifier.confidence) || verifier.confidence < 0 || verifier.confidence > 100) verifier.status = 'FAILED';
+          const planned = planner.acceptanceCriteria;
+          const received = Array.isArray(verifier.criteria) ? verifier.criteria.map((item) => item?.criterion) : [];
+          const exactCoverage = received.length === planned.length && new Set(received).size === planned.length && planned.every((criterion) => received.includes(criterion));
+          const criteriaPass = exactCoverage && verifier.criteria.every((item) => item.status === 'PASS' && String(item.evidence || '').trim());
+          if (verifier.status === 'PASS' && (!checks.passed || !criteriaPass || verifier.scopeIssues.length > 0)) {
+            verifier.status = 'NEEDS_FIX';
+            verifier.summary = 'Verification evidence did not support PASS for every criterion, deterministic check, and scope constraint.';
+          }
+          const beforeStatus = fs.readFileSync('.codex-task/pre-verifier-status.txt', 'utf8');
+          const afterStatus = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          if (beforeStatus !== afterStatus) {
+            verifier.status = 'FAILED';
+            verifier.summary = 'The verifier modified repository files during its read-only review.';
+          }
+          fs.writeFileSync('.codex-task/normalized-verifier-result.json', JSON.stringify(verifier, null, 2));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `status=${verifier.status}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `confidence=${verifier.confidence}\n`);
+          NODE
+
       - name: Create branch and pull request
         id: create_pr
-        if: steps.result.outputs.status == 'COMPLETED'
+        if: steps.result.outputs.status == 'COMPLETED' && steps.verifier.outputs.status == 'PASS'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
@@ -557,7 +707,7 @@ jobs:
           fi
 
       - name: Report failure
-        if: always() && steps.planner.outputs.status != 'NEEDS_CLARIFICATION' && steps.planner_cancel.outputs.cancelled != 'true' && steps.final_cancel_check.outputs.cancelled != 'true' && (failure() || steps.validate.outcome == 'failure' || steps.planner.outputs.status == 'FAILED' || steps.planner.outputs.status == 'REJECTED' || steps.result.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
+        if: always() && steps.planner.outputs.status != 'NEEDS_CLARIFICATION' && steps.planner_cancel.outputs.cancelled != 'true' && steps.final_cancel_check.outputs.cancelled != 'true' && (failure() || steps.validate.outcome == 'failure' || steps.planner.outputs.status == 'FAILED' || steps.planner.outputs.status == 'REJECTED' || steps.result.outputs.status == 'FAILED' || steps.verifier.outputs.status == 'NEEDS_FIX' || steps.verifier.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -567,6 +717,7 @@ jobs:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           PLANNER_STATUS: ${{ steps.planner.outputs.status }}
           RESULT_STATUS: ${{ steps.result.outputs.status }}
+          VERIFIER_STATUS: ${{ steps.verifier.outputs.status }}
           CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
         run: |
           node <<'NODE'
@@ -580,6 +731,13 @@ jobs:
               reason = String(planner.summary || 'The planner could not approve this task for implementation.').trim();
             } catch {
               reason = 'The planner could not approve this task for implementation.';
+            }
+          } else if (process.env.VERIFIER_STATUS === 'NEEDS_FIX' || process.env.VERIFIER_STATUS === 'FAILED') {
+            try {
+              const verifier = JSON.parse(fs.readFileSync('.codex-task/normalized-verifier-result.json', 'utf8'));
+              reason = String(verifier.summary || 'Independent verification did not approve the change.').trim();
+            } catch {
+              reason = 'Independent verification did not approve the change.';
             }
           } else {
             try {

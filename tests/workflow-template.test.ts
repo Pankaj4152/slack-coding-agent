@@ -55,4 +55,15 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('repositoryModifiedByChecks');
     expect(template).toContain('deterministic-validation.json');
   });
+
+  it('independently verifies every criterion before creating a PR', () => {
+    expect(template).toContain('name: Run Codex verifier');
+    expect(template).toContain('name: Run Gemini verifier');
+    expect(template).toContain('name: Normalize verifier result');
+    expect(template).toContain('"enum": ["PASS", "NEEDS_FIX", "FAILED"]');
+    expect(template).toContain('exactCoverage');
+    expect(template).toContain('criteriaPass');
+    expect(template).toContain('pre-verifier-status.txt');
+    expect(template).toContain("steps.verifier.outputs.status == 'PASS'");
+  });
 });
