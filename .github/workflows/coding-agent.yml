@@ -90,7 +90,7 @@ jobs:
           ${comments.map((comment) => `By ${comment.user?.login || 'unknown'}:\n${comment.body || ''}`).join('\n\n---\n\n')}
           `;
           fs.writeFileSync('.codex-task/planner-prompt.md', prompt, { mode: 0o600 });
-          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n');
+          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngha-creds-*.json\n');
           NODE
 
       - name: Run Codex planner

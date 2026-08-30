@@ -37,6 +37,8 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("if: steps.planner.outputs.status == 'NEEDS_CLARIFICATION'");
     expect(template).toContain('<!-- agent-question -->');
     expect(template).toContain('APPROVED PLAN:');
+    expect(template).toContain("'\\n.codex-task/\\n.gemini/\\ngha-creds-*.json\\n'");
+    expect(template).toContain("['status', '--porcelain']");
   });
 
   it('optionally requires requester approval bound to the exact plan', () => {
