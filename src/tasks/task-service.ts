@@ -99,18 +99,28 @@ export class TaskService {
   }
 
   private async preflightRepository(owner: string, repo: string): Promise<void> {
+    let repository;
     try {
-      const repository = await this.github.rest.repos.get({ owner, repo });
-      if (repository.data.archived || repository.data.disabled) {
+      repository = await this.github.rest.repos.get({ owner, repo });
+    } catch (error) {
+      if ((error as { status?: number }).status === 404) {
         throw new RepositoryPreflightError(
-          `Repository \`${owner}/${repo}\` is archived or disabled, so a coding task cannot run there.`,
+          `PRobe cannot access \`${owner}/${repo}\`. Install the PRobe GitHub App on that repository and confirm it is included in Render's \`ALLOWED_REPOSITORIES\`, then try again.`,
         );
       }
-      if (!repository.data.has_issues) {
-        throw new RepositoryPreflightError(
-          `GitHub Issues are disabled in \`${owner}/${repo}\`. Enable Issues and try again.`,
-        );
-      }
+      throw error;
+    }
+    if (repository.data.archived || repository.data.disabled) {
+      throw new RepositoryPreflightError(
+        `Repository \`${owner}/${repo}\` is archived or disabled, so a coding task cannot run there.`,
+      );
+    }
+    if (!repository.data.has_issues) {
+      throw new RepositoryPreflightError(
+        `GitHub Issues are disabled in \`${owner}/${repo}\`. Enable Issues and try again.`,
+      );
+    }
+    try {
       await this.github.rest.repos.getContent({
         owner,
         repo,
@@ -118,11 +128,9 @@ export class TaskService {
         ref: repository.data.default_branch,
       });
     } catch (error) {
-      if (error instanceof RepositoryPreflightError) throw error;
-      const status = (error as { status?: number }).status;
-      if (status === 404) {
+      if ((error as { status?: number }).status === 404) {
         throw new RepositoryPreflightError(
-          `I cannot access \`${owner}/${repo}\`, or its \`.github/workflows/coding-agent.yml\` file is missing from the default branch. Install the GitHub App and add the workflow, then try again.`,
+          `\`.github/workflows/coding-agent.yml\` is missing from the default branch \`${repository.data.default_branch}\` of \`${owner}/${repo}\`. Run PRobe's workflow installer, commit the generated workflow, and try again.`,
         );
       }
       throw error;

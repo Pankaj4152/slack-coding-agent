@@ -45,6 +45,52 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Validate target repository configuration
+        id: configuration
+        env:
+          PROVIDER: ${{ vars.CODING_AGENT_PROVIDER || 'codex' }}
+          REQUIRE_APPROVAL: ${{ vars.CODING_AGENT_REQUIRE_APPROVAL || 'false' }}
+          APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
+          VALIDATION_COMMANDS: ${{ vars.CODING_AGENT_VALIDATION_COMMANDS_JSON }}
+          OPENAI_KEY_PRESENT: ${{ secrets.OPENAI_API_KEY != '' }}
+          GEMINI_KEY_PRESENT: ${{ secrets.GEMINI_API_KEY != '' }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const errors = [];
+          const provider = process.env.PROVIDER || 'codex';
+          if (!['codex', 'gemini'].includes(provider)) {
+            errors.push('Set Actions variable CODING_AGENT_PROVIDER to either codex or gemini.');
+          }
+          if (provider === 'codex' && process.env.OPENAI_KEY_PRESENT !== 'true') {
+            errors.push('Add OPENAI_API_KEY under target repository Settings > Secrets and variables > Actions > Secrets.');
+          }
+          if (provider === 'gemini' && process.env.GEMINI_KEY_PRESENT !== 'true') {
+            errors.push('Add GEMINI_API_KEY under target repository Settings > Secrets and variables > Actions > Secrets.');
+          }
+          if (!['true', 'false'].includes(process.env.REQUIRE_APPROVAL || '')) {
+            errors.push('Set CODING_AGENT_REQUIRE_APPROVAL to true or false.');
+          }
+          if ((provider === 'codex' || process.env.REQUIRE_APPROVAL === 'true') && !String(process.env.APPROVAL_BOT_LOGIN || '').trim()) {
+            errors.push('Add Actions variable CODING_AGENT_APPROVAL_BOT_LOGIN with the exact trusted app bot, for example probe-coding-agent[bot].');
+          }
+          if (!fs.existsSync('AGENTS.md')) {
+            errors.push('AGENTS.md is missing from the target repository root. Run PRobe\'s workflow installer and commit the generated file.');
+          }
+          if (String(process.env.VALIDATION_COMMANDS || '').trim()) {
+            try {
+              const commands = JSON.parse(process.env.VALIDATION_COMMANDS);
+              if (!Array.isArray(commands) || commands.length > 8 || commands.some((command) => typeof command !== 'string' || !command.trim())) throw new Error();
+            } catch {
+              errors.push('CODING_AGENT_VALIDATION_COMMANDS_JSON must be a JSON array of at most eight nonempty command strings, or remove it to use automatic detection.');
+            }
+          }
+          if (errors.length) {
+            fs.writeFileSync(process.env.RUNNER_TEMP + '/configuration-error.txt', errors.map((error) => `- ${error}`).join('\n'));
+            throw new Error(errors.join(' '));
+          }
+          NODE
+
       - name: Mark task working
         env:
           GH_TOKEN: ${{ github.token }}
@@ -90,7 +136,7 @@ jobs:
           ${comments.map((comment) => `By ${comment.user?.login || 'unknown'}:\n${comment.body || ''}`).join('\n\n---\n\n')}
           `;
           fs.writeFileSync('.codex-task/planner-prompt.md', prompt, { mode: 0o600 });
-          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngha-creds-*.json\n');
+          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngemini-artifacts/\ngha-creds-*.json\n');
           NODE
 
       - name: Run Codex planner
@@ -171,6 +217,7 @@ jobs:
           if (planner.status === 'NEEDS_CLARIFICATION' && !String(planner.question || '').trim()) planner.status = 'FAILED';
           const changes = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
           if (changes) {
+            console.error('Planner workspace changes:', JSON.stringify(changes.split('\n').slice(0, 20)));
             planner.status = 'FAILED';
             planner.summary = 'The planner modified repository files during its read-only planning pass.';
           }
@@ -1277,11 +1324,18 @@ jobs:
           VERIFIER_STATUS: ${{ steps.final_verification.outputs.status }}
           REPAIRED: ${{ steps.final_verification.outputs.repaired }}
           CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
+          CONFIGURATION_OUTCOME: ${{ steps.configuration.outcome }}
         run: |
           node <<'NODE'
           const fs = require('fs');
           let reason = 'The coding workflow failed.';
-          if (process.env.VALIDATE_OUTCOME === 'failure') {
+          if (process.env.CONFIGURATION_OUTCOME === 'failure') {
+            try {
+              reason = `Target repository configuration is incomplete:\n${fs.readFileSync(process.env.RUNNER_TEMP + '/configuration-error.txt', 'utf8')}`;
+            } catch {
+              reason = 'Target repository configuration validation failed. Check the Validate target repository configuration step.';
+            }
+          } else if (process.env.VALIDATE_OUTCOME === 'failure') {
             reason = 'The task metadata could not be validated. Confirm the issue was created by the Slack coding agent for this repository.';
           } else if (process.env.PLANNER_STATUS === 'FAILED' || process.env.PLANNER_STATUS === 'REJECTED') {
             try {

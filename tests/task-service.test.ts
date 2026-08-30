@@ -2,7 +2,7 @@ import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../src/db/database.js';
 import { TaskRepository } from '../src/tasks/task-repository.js';
-import { RepositoryPreflightError, TaskService } from '../src/tasks/task-service.js';
+import { TaskService } from '../src/tasks/task-service.js';
 
 describe('repository allowlist', () => {
   it('accepts only configured repositories, case-insensitively', () => {
@@ -86,7 +86,32 @@ describe('repository preflight', () => {
         repo: 'repo',
         task: 'Add documentation',
       }),
-    ).rejects.toThrow(RepositoryPreflightError);
+    ).rejects.toThrow(/coding-agent\.yml.*main/);
+    db.close();
+  });
+
+  it('distinguishes missing GitHub App access from a missing workflow', async () => {
+    const github = {
+      rest: {
+        repos: {
+          get: async () => {
+            throw Object.assign(new Error('Not found'), { status: 404 });
+          },
+        },
+      },
+    };
+    const { db, service } = makeService(github);
+    await expect(
+      service.create({
+        workspaceId: 'T1',
+        channelId: 'C1',
+        threadTs: '1.1',
+        requesterUserId: 'U1',
+        owner: 'owner',
+        repo: 'repo',
+        task: 'Add documentation',
+      }),
+    ).rejects.toThrow(/Install the PRobe GitHub App/);
     db.close();
   });
 });
