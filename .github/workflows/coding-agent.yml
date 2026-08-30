@@ -639,34 +639,472 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `confidence=${verifier.confidence}\n`);
           NODE
 
+      - name: Check cancellation before repair
+        id: repair_cancel
+        if: steps.verifier.outputs.status == 'NEEDS_FIX'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
+            echo "cancelled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cancelled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build repair prompt
+        if: steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const childProcess = require('child_process');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const coding = JSON.parse(fs.readFileSync('.codex-task/normalized-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
+          const verifier = JSON.parse(fs.readFileSync('.codex-task/normalized-verifier-result.json', 'utf8'));
+          const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          const diff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=30'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          const boundedDiff = diff.length > 120000 ? `${diff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : diff;
+          const fingerprint = crypto.createHash('sha256')
+            .update(status)
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          const prompt = `You are performing the one allowed repair attempt for a coding-agent task.
+
+          Fix only the actionable failures reported by independent verification and deterministic checks. Preserve correct existing work and stay within the approved plan.
+
+          Rules:
+          - Do not expand scope or weaken tests, validation, safety, or acceptance criteria.
+          - Do not alter infrastructure, permissions, authentication, billing, or secrets unless explicitly approved in the plan.
+          - Do not commit, push, create a pull request, or merge.
+          - If repair requires a new material product decision, return NEEDS_CLARIFICATION with one specific question.
+          - Return the existing coding-result JSON contract.
+
+          APPROVED PLAN:
+          ${JSON.stringify(planner, null, 2)}
+
+          INITIAL CODING RESULT:
+          ${JSON.stringify(coding, null, 2)}
+
+          DETERMINISTIC FAILURES:
+          ${JSON.stringify(checks, null, 2)}
+
+          VERIFIER FEEDBACK:
+          ${JSON.stringify(verifier, null, 2)}
+
+          CURRENT DIFF:
+          ${boundedDiff}`;
+          fs.mkdirSync('.codex-task/attempt-0', { recursive: true });
+          fs.copyFileSync('.codex-task/normalized-result.json', '.codex-task/attempt-0/coding-result.json');
+          fs.copyFileSync('.codex-task/deterministic-validation.json', '.codex-task/attempt-0/deterministic-validation.json');
+          fs.copyFileSync('.codex-task/normalized-verifier-result.json', '.codex-task/attempt-0/verifier-result.json');
+          fs.writeFileSync('.codex-task/pre-repair-fingerprint.txt', fingerprint);
+          fs.writeFileSync('.codex-task/repair-prompt.md', prompt, { mode: 0o600 });
+          NODE
+
+      - name: Run Codex repair
+        id: repair_codex
+        if: env.AGENT_PROVIDER == 'codex' && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .codex-task/repair-prompt.md
+          output-file: .codex-task/repair-result.json
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          allow-bots: true
+          allow-bot-users: pankaj-slack-coding-agent[bot]
+          output-schema: |
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "summary", "question", "validation", "risks", "noChangesRequired"],
+              "properties": {
+                "status": {"type": "string", "enum": ["COMPLETED", "NEEDS_CLARIFICATION", "FAILED"]},
+                "summary": {"type": "string"},
+                "question": {"type": "string"},
+                "validation": {"type": "array", "items": {"type": "string"}},
+                "risks": {"type": "string"},
+                "noChangesRequired": {"type": "boolean"}
+              }
+            }
+
+      - name: Run Gemini repair
+        id: repair_gemini
+        if: env.AGENT_PROVIDER == 'gemini' && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        continue-on-error: true
+        uses: google-github-actions/run-gemini-cli@v0
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_model: gemini-3.1-flash-lite
+          prompt: |
+            @.codex-task/repair-prompt.md
+
+            Repair only the reported failures. Do not commit, push, or open a pull request. Write .codex-task/repair-result.json using exactly: status, summary, question, validation, risks, and noChangesRequired.
+          settings: |
+            {
+              "model": { "maxSessionTurns": 40 },
+              "telemetry": { "enabled": false }
+            }
+
+      - name: Normalize repair result
+        id: repair_result
+        if: always() && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        env:
+          PROVIDER: ${{ env.AGENT_PROVIDER }}
+          CODEX_OUTCOME: ${{ steps.repair_codex.outcome }}
+          GEMINI_OUTCOME: ${{ steps.repair_gemini.outcome }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const childProcess = require('child_process');
+          const providerOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          let result;
+          try {
+            result = JSON.parse(fs.readFileSync('.codex-task/repair-result.json', 'utf8'));
+          } catch {
+            result = { status: 'FAILED', summary: 'The repair agent did not return valid structured output.', question: '', validation: [], risks: '', noChangesRequired: false };
+          }
+          if (providerOutcome !== 'success') {
+            result.status = 'FAILED';
+            result.summary = `The ${process.env.PROVIDER || 'coding'} repair agent could not complete the bounded repair attempt.`;
+          }
+          if (!['COMPLETED', 'NEEDS_CLARIFICATION', 'FAILED'].includes(result.status)) result.status = 'FAILED';
+          if (!Array.isArray(result.validation)) result.status = 'FAILED';
+          if (result.status === 'NEEDS_CLARIFICATION' && !String(result.question || '').trim()) result.status = 'FAILED';
+          const fingerprint = crypto.createHash('sha256')
+            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          const beforeFingerprint = fs.readFileSync('.codex-task/pre-repair-fingerprint.txt', 'utf8');
+          if (result.status === 'COMPLETED' && fingerprint === beforeFingerprint) {
+            result.status = 'FAILED';
+            result.summary = 'The repair agent reported completion but did not change the implementation.';
+          }
+          fs.writeFileSync('.codex-task/normalized-repair-result.json', JSON.stringify(result, null, 2));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `status=${result.status}\n`);
+          NODE
+
+      - name: Ask repair clarification
+        if: steps.repair_result.outputs.status == 'NEEDS_CLARIFICATION'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node -e "const r=require('./.codex-task/normalized-repair-result.json'); require('fs').writeFileSync(process.env.RUNNER_TEMP + '/comment.md', '<!-- agent-question -->\\n\\n' + r.question)"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --remove-label "agent-working" --add-label "agent-needs-input"
+
+      - name: Check cancellation before repair verification
+        id: repair_verification_cancel
+        if: steps.repair_result.outputs.status == 'COMPLETED'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
+            echo "cancelled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cancelled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rerun deterministic validation after repair
+        id: repair_validation
+        if: steps.repair_result.outputs.status == 'COMPLETED' && steps.repair_verification_cancel.outputs.cancelled != 'true'
+        env:
+          VALIDATION_COMMANDS_JSON: ${{ vars.CODING_AGENT_VALIDATION_COMMANDS_JSON || '' }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const childProcess = require('child_process');
+          childProcess.execFileSync('git', ['add', '-N', '--', '.']);
+          const fingerprint = () => crypto.createHash('sha256')
+            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          const beforeFingerprint = fingerprint();
+          const configured = String(process.env.VALIDATION_COMMANDS_JSON || '').trim();
+          let commands = [];
+          let configurationError = '';
+          try {
+            if (configured) {
+              commands = JSON.parse(configured);
+              if (!Array.isArray(commands) || commands.length > 8 || commands.some((command) => typeof command !== 'string' || !command.trim() || command.length > 300)) {
+                throw new Error('must contain at most 8 nonempty command strings of at most 300 characters');
+              }
+              commands = commands.map((command) => ({ label: command, file: 'bash', args: ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command] }));
+            } else if (fs.existsSync('package.json')) {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              const scripts = pkg.scripts || {};
+              const manager = fs.existsSync('pnpm-lock.yaml') ? ['corepack', ['pnpm']] : fs.existsSync('yarn.lock') ? ['corepack', ['yarn']] : ['npm', ['run']];
+              for (const name of ['format:check', 'lint', 'typecheck', 'test', 'build']) {
+                if (typeof scripts[name] === 'string') commands.push({ label: `${manager[0]} ${[...manager[1], name].join(' ')}`, file: manager[0], args: [...manager[1], name] });
+              }
+            }
+          } catch (error) {
+            configurationError = `Invalid validation configuration: ${error instanceof Error ? error.message : 'unknown error'}`;
+            commands = [];
+          }
+          const cleanEnv = { ...process.env, CI: 'true' };
+          for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'ACTIONS_RUNTIME_TOKEN']) delete cleanEnv[key];
+          const redact = (value) => String(value || '')
+            .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
+            .replace(/xox[baprs]-[A-Za-z0-9-]+/g, '[REDACTED]')
+            .replace(/(?:ghp|github_pat)_[A-Za-z0-9_]+/g, '[REDACTED]');
+          const results = commands.map((command) => {
+            const started = Date.now();
+            const run = childProcess.spawnSync(command.file, command.args, {
+              encoding: 'utf8', env: cleanEnv, timeout: 600000, maxBuffer: 1024 * 1024,
+            });
+            return {
+              command: command.label,
+              exitCode: typeof run.status === 'number' ? run.status : null,
+              passed: run.status === 0 && !run.error,
+              timedOut: run.error?.code === 'ETIMEDOUT',
+              durationMs: Date.now() - started,
+              output: redact(`${run.stdout || ''}${run.stderr || ''}`).slice(-4000),
+            };
+          });
+          const repositoryModifiedByChecks = beforeFingerprint !== fingerprint();
+          const report = {
+            source: configured ? 'repository-variable' : 'discovered-package-scripts',
+            passed: !configurationError && results.every((result) => result.passed) && !repositoryModifiedByChecks,
+            configurationError,
+            repositoryModifiedByChecks,
+            results,
+          };
+          fs.writeFileSync('.codex-task/repair-deterministic-validation.json', JSON.stringify(report, null, 2));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `passed=${report.passed}\n`);
+          NODE
+
+      - name: Build repair verifier prompt
+        if: steps.repair_result.outputs.status == 'COMPLETED' && steps.repair_verification_cancel.outputs.cancelled != 'true'
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const childProcess = require('child_process');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const repair = JSON.parse(fs.readFileSync('.codex-task/normalized-repair-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/repair-deterministic-validation.json', 'utf8'));
+          const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          const stat = childProcess.execFileSync('git', ['diff', '--stat'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          const diff = rawDiff.length > 120000 ? `${rawDiff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : rawDiff;
+          const prompt = `You are independently verifying code after the one allowed repair attempt. Do not edit repository files.
+
+          Re-evaluate the complete current implementation against every approved acceptance criterion, scope constraint, and fresh deterministic check. Do not rely on the initial verifier decision.
+
+          Rules:
+          - PASS requires exact coverage of every acceptance criterion with specific current evidence.
+          - Any failed/timed-out check, empty evidence, missing test, or scope issue requires NEEDS_FIX.
+          - Use FAILED only when a trustworthy decision cannot be produced.
+          - Do not repair files, expose secrets, commit, push, create a PR, or merge.
+
+          APPROVED PLAN:
+          ${JSON.stringify(planner, null, 2)}
+
+          REPAIR RESULT:
+          ${JSON.stringify(repair, null, 2)}
+
+          FRESH DETERMINISTIC VALIDATION:
+          ${JSON.stringify(checks, null, 2)}
+
+          GIT STATUS:
+          ${status}
+
+          DIFF STAT:
+          ${stat}
+
+          DIFF:
+          ${diff}`;
+          const fingerprint = crypto.createHash('sha256')
+            .update(status)
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          fs.writeFileSync('.codex-task/pre-repair-verifier-fingerprint.txt', fingerprint);
+          fs.writeFileSync('.codex-task/repair-verifier-prompt.md', prompt, { mode: 0o600 });
+          NODE
+
+      - name: Run Codex repair verifier
+        id: repair_verifier_codex
+        if: env.AGENT_PROVIDER == 'codex' && steps.repair_result.outputs.status == 'COMPLETED' && steps.repair_verification_cancel.outputs.cancelled != 'true'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .codex-task/repair-verifier-prompt.md
+          output-file: .codex-task/repair-verifier-result.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          allow-bots: true
+          allow-bot-users: pankaj-slack-coding-agent[bot]
+          output-schema: |
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "summary", "criteria", "checksReviewed", "scopeIssues", "risks", "confidence"],
+              "properties": {
+                "status": {"type": "string", "enum": ["PASS", "NEEDS_FIX", "FAILED"]},
+                "summary": {"type": "string"},
+                "criteria": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["criterion", "status", "evidence"],
+                    "properties": {
+                      "criterion": {"type": "string"},
+                      "status": {"type": "string", "enum": ["PASS", "FAIL", "UNKNOWN"]},
+                      "evidence": {"type": "string"}
+                    }
+                  }
+                },
+                "checksReviewed": {"type": "array", "items": {"type": "string"}},
+                "scopeIssues": {"type": "array", "items": {"type": "string"}},
+                "risks": {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "integer", "minimum": 0, "maximum": 100}
+              }
+            }
+
+      - name: Run Gemini repair verifier
+        id: repair_verifier_gemini
+        if: env.AGENT_PROVIDER == 'gemini' && steps.repair_result.outputs.status == 'COMPLETED' && steps.repair_verification_cancel.outputs.cancelled != 'true'
+        continue-on-error: true
+        uses: google-github-actions/run-gemini-cli@v0
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_model: gemini-3.1-flash-lite
+          prompt: |
+            @.codex-task/repair-verifier-prompt.md
+
+            Verify only. Do not edit repository files. Write .codex-task/repair-verifier-result.json using exactly: status, summary, criteria, checksReviewed, scopeIssues, risks, and confidence.
+          settings: |
+            {
+              "model": { "maxSessionTurns": 30 },
+              "telemetry": { "enabled": false }
+            }
+
+      - name: Normalize repair verifier result
+        id: repair_verifier
+        if: always() && steps.repair_result.outputs.status == 'COMPLETED' && steps.repair_verification_cancel.outputs.cancelled != 'true'
+        env:
+          PROVIDER: ${{ env.AGENT_PROVIDER }}
+          CODEX_OUTCOME: ${{ steps.repair_verifier_codex.outcome }}
+          GEMINI_OUTCOME: ${{ steps.repair_verifier_gemini.outcome }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const childProcess = require('child_process');
+          const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/repair-deterministic-validation.json', 'utf8'));
+          const providerOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          let verifier;
+          try {
+            verifier = JSON.parse(fs.readFileSync('.codex-task/repair-verifier-result.json', 'utf8'));
+          } catch {
+            verifier = { status: 'FAILED', summary: 'The repair verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+          }
+          if (providerOutcome !== 'success') {
+            verifier.status = 'FAILED';
+            verifier.summary = `The ${process.env.PROVIDER || 'coding'} repair verifier could not complete its review.`;
+          }
+          if (!['PASS', 'NEEDS_FIX', 'FAILED'].includes(verifier.status)) verifier.status = 'FAILED';
+          if (!Array.isArray(verifier.criteria) || !Array.isArray(verifier.checksReviewed) || !Array.isArray(verifier.scopeIssues) || !Array.isArray(verifier.risks)) verifier.status = 'FAILED';
+          if (!Number.isInteger(verifier.confidence) || verifier.confidence < 0 || verifier.confidence > 100) verifier.status = 'FAILED';
+          const planned = planner.acceptanceCriteria;
+          const received = Array.isArray(verifier.criteria) ? verifier.criteria.map((item) => item?.criterion) : [];
+          const exactCoverage = received.length === planned.length && new Set(received).size === planned.length && planned.every((criterion) => received.includes(criterion));
+          const criteriaPass = exactCoverage && verifier.criteria.every((item) => item.status === 'PASS' && String(item.evidence || '').trim());
+          if (verifier.status === 'PASS' && (!checks.passed || !criteriaPass || verifier.scopeIssues.length > 0)) {
+            verifier.status = 'NEEDS_FIX';
+            const failedCommands = checks.results.filter((item) => !item.passed).map((item) => item.command);
+            verifier.summary = failedCommands.length
+              ? `Repair validation failed: ${failedCommands.join(', ')}`
+              : checks.configurationError || 'Repaired code did not satisfy every criterion and scope constraint.';
+          }
+          const beforeFingerprint = fs.readFileSync('.codex-task/pre-repair-verifier-fingerprint.txt', 'utf8');
+          const afterFingerprint = crypto.createHash('sha256')
+            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          if (beforeFingerprint !== afterFingerprint) {
+            verifier.status = 'FAILED';
+            verifier.summary = 'The repair verifier modified repository files during its read-only review.';
+          }
+          fs.writeFileSync('.codex-task/normalized-repair-verifier-result.json', JSON.stringify(verifier, null, 2));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `status=${verifier.status}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `confidence=${verifier.confidence}\n`);
+          NODE
+
+      - name: Select final verification outcome
+        id: final_verification
+        if: always() && steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true' && steps.repair_result.outputs.status != 'NEEDS_CLARIFICATION'
+        env:
+          INITIAL_STATUS: ${{ steps.verifier.outputs.status }}
+          REPAIR_STATUS: ${{ steps.repair_result.outputs.status }}
+          REPAIR_VERIFIER_STATUS: ${{ steps.repair_verifier.outputs.status }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          let status = process.env.INITIAL_STATUS || 'FAILED';
+          let repaired = false;
+          if (status === 'PASS') {
+            fs.copyFileSync('.codex-task/normalized-result.json', '.codex-task/final-coding-result.json');
+            fs.copyFileSync('.codex-task/deterministic-validation.json', '.codex-task/final-deterministic-validation.json');
+            fs.copyFileSync('.codex-task/normalized-verifier-result.json', '.codex-task/final-verifier-result.json');
+          } else if (status === 'NEEDS_FIX') {
+            repaired = true;
+            if (process.env.REPAIR_STATUS !== 'COMPLETED') {
+              status = 'FAILED';
+            } else {
+              status = process.env.REPAIR_VERIFIER_STATUS || 'FAILED';
+              fs.copyFileSync('.codex-task/normalized-repair-result.json', '.codex-task/final-coding-result.json');
+              fs.copyFileSync('.codex-task/repair-deterministic-validation.json', '.codex-task/final-deterministic-validation.json');
+              fs.copyFileSync('.codex-task/normalized-repair-verifier-result.json', '.codex-task/final-verifier-result.json');
+            }
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `status=${status}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `repaired=${repaired}\n`);
+          NODE
+
       - name: Report passing verification
-        if: steps.verifier.outputs.status == 'PASS'
+        if: steps.final_verification.outputs.status == 'PASS'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const verifier = JSON.parse(fs.readFileSync('.codex-task/normalized-verifier-result.json', 'utf8'));
-          const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
+          const verifier = JSON.parse(fs.readFileSync('.codex-task/final-verifier-result.json', 'utf8'));
+          const checks = JSON.parse(fs.readFileSync('.codex-task/final-deterministic-validation.json', 'utf8'));
           const summary = String(verifier.summary || 'Independent verification passed.').replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]').slice(0, 800);
           const passedChecks = checks.results.filter((check) => check.passed).length;
-          const body = `<!-- agent-verification -->\n\n${summary}\n\nConfidence: ${verifier.confidence}% · Deterministic checks: ${passedChecks}/${checks.results.length} passed.`;
+          const repaired = '${{ steps.final_verification.outputs.repaired }}' === 'true';
+          const body = `<!-- agent-verification -->\n\n${summary}\n\nConfidence: ${verifier.confidence}% · Deterministic checks: ${passedChecks}/${checks.results.length} passed.${repaired ? '\n\nRecovered after one bounded repair attempt.' : ''}`;
           fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', body);
           NODE
           gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Create branch and pull request
         id: create_pr
-        if: steps.result.outputs.status == 'COMPLETED' && steps.verifier.outputs.status == 'PASS'
+        if: steps.result.outputs.status == 'COMPLETED' && steps.final_verification.outputs.status == 'PASS'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
           RUNNER_TEMP_DIR: ${{ runner.temp }}
+          REPAIRED: ${{ steps.final_verification.outputs.repaired }}
         run: |
-          cp .codex-task/normalized-result.json "$RUNNER_TEMP_DIR/agent-result-final.json"
+          cp .codex-task/final-coding-result.json "$RUNNER_TEMP_DIR/agent-result-final.json"
           cp .codex-task/normalized-planner-result.json "$RUNNER_TEMP_DIR/planner-result-final.json"
-          cp .codex-task/normalized-verifier-result.json "$RUNNER_TEMP_DIR/verifier-result-final.json"
-          cp .codex-task/deterministic-validation.json "$RUNNER_TEMP_DIR/deterministic-validation-final.json"
+          cp .codex-task/final-verifier-result.json "$RUNNER_TEMP_DIR/verifier-result-final.json"
+          cp .codex-task/final-deterministic-validation.json "$RUNNER_TEMP_DIR/deterministic-validation-final.json"
           rm -rf .codex-task
           if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
             echo "cancelled=true" >> "$GITHUB_OUTPUT"
@@ -707,6 +1145,8 @@ jobs:
           const body = `## Summary
 
           ${safe(result.summary)}
+
+          Bounded repair attempt: ${process.env.REPAIRED === 'true' ? 'used and verified' : 'not needed'}.
 
           ## Planned acceptance criteria
 
@@ -764,7 +1204,7 @@ jobs:
           fi
 
       - name: Report failure
-        if: always() && steps.planner.outputs.status != 'NEEDS_CLARIFICATION' && steps.planner_cancel.outputs.cancelled != 'true' && steps.final_cancel_check.outputs.cancelled != 'true' && (failure() || steps.validate.outcome == 'failure' || steps.planner.outputs.status == 'FAILED' || steps.planner.outputs.status == 'REJECTED' || steps.result.outputs.status == 'FAILED' || steps.verifier.outputs.status == 'NEEDS_FIX' || steps.verifier.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
+        if: always() && steps.planner.outputs.status != 'NEEDS_CLARIFICATION' && steps.repair_result.outputs.status != 'NEEDS_CLARIFICATION' && steps.planner_cancel.outputs.cancelled != 'true' && steps.final_cancel_check.outputs.cancelled != 'true' && (failure() || steps.validate.outcome == 'failure' || steps.planner.outputs.status == 'FAILED' || steps.planner.outputs.status == 'REJECTED' || steps.result.outputs.status == 'FAILED' || steps.final_verification.outputs.status == 'NEEDS_FIX' || steps.final_verification.outputs.status == 'FAILED' || steps.create_pr.outcome == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -774,7 +1214,8 @@ jobs:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           PLANNER_STATUS: ${{ steps.planner.outputs.status }}
           RESULT_STATUS: ${{ steps.result.outputs.status }}
-          VERIFIER_STATUS: ${{ steps.verifier.outputs.status }}
+          VERIFIER_STATUS: ${{ steps.final_verification.outputs.status }}
+          REPAIRED: ${{ steps.final_verification.outputs.repaired }}
           CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
         run: |
           node <<'NODE'
@@ -791,8 +1232,18 @@ jobs:
             }
           } else if (process.env.VERIFIER_STATUS === 'NEEDS_FIX' || process.env.VERIFIER_STATUS === 'FAILED') {
             try {
-              const verifier = JSON.parse(fs.readFileSync('.codex-task/normalized-verifier-result.json', 'utf8'));
+              const verifierPath = fs.existsSync('.codex-task/final-verifier-result.json')
+                ? '.codex-task/final-verifier-result.json'
+                : fs.existsSync('.codex-task/normalized-repair-verifier-result.json')
+                  ? '.codex-task/normalized-repair-verifier-result.json'
+                  : process.env.REPAIRED === 'true' && fs.existsSync('.codex-task/normalized-repair-result.json')
+                    ? '.codex-task/normalized-repair-result.json'
+                    : '.codex-task/normalized-verifier-result.json';
+              const verifier = JSON.parse(fs.readFileSync(verifierPath, 'utf8'));
               reason = String(verifier.summary || 'Independent verification did not approve the change.').trim();
+              if (process.env.REPAIRED === 'true' && process.env.VERIFIER_STATUS === 'NEEDS_FIX') {
+                reason = `The bounded repair attempt was exhausted. ${reason}`;
+              }
             } catch {
               reason = 'Independent verification did not approve the change.';
             }

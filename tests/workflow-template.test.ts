@@ -67,7 +67,7 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('exactCoverage');
     expect(template).toContain('criteriaPass');
     expect(template).toContain('pre-verifier-fingerprint.txt');
-    expect(template).toContain("steps.verifier.outputs.status == 'PASS'");
+    expect(template).toContain("steps.final_verification.outputs.status == 'PASS'");
   });
 
   it('reports verification evidence to Slack and the PR', () => {
@@ -76,5 +76,17 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('verifier-result-final.json');
     expect(template).toContain('## Independent verification');
     expect(template).toContain('## Deterministic checks');
+  });
+
+  it('allows exactly one evidence-driven repair and requires fresh verification', () => {
+    expect(template).toContain('name: Run Codex repair');
+    expect(template).toContain('name: Run Gemini repair');
+    expect(template).toContain('attempt-0/verifier-result.json');
+    expect(template).toContain('name: Rerun deterministic validation after repair');
+    expect(template).toContain('name: Run Codex repair verifier');
+    expect(template).toContain('name: Run Gemini repair verifier');
+    expect(template).toContain('name: Select final verification outcome');
+    expect(template).toContain("steps.final_verification.outputs.status == 'PASS'");
+    expect(template).toContain('Recovered after one bounded repair attempt.');
   });
 });
