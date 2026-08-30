@@ -12,10 +12,20 @@ describe('coding agent workflow template', () => {
   it('supports Codex by default and Gemini 3.1 Flash-Lite by selection', () => {
     expect(template).toContain("AGENT_PROVIDER: ${{ vars.CODING_AGENT_PROVIDER || 'codex' }}");
     expect(template).toContain("if: env.AGENT_PROVIDER == 'codex'");
+    expect(template.match(/codex-home: \$\{\{ runner\.temp \}\}\/probe-codex-home-/g)).toHaveLength(
+      5,
+    );
+    expect(new Set(template.match(/probe-codex-home-[a-z-]+/g)).size).toBe(5);
+    expect(template).toContain('steps.codex.outputs.final-message');
+    expect(template).toContain('Codex Action runtime or sandbox error');
     expect(template).toContain("if: env.AGENT_PROVIDER == 'gemini'");
     expect(template).toContain('uses: google-github-actions/run-gemini-cli@v0');
     expect(template).toContain('gemini_model: gemini-3.1-flash-lite');
     expect(template.match(/GEMINI_CLI_TRUST_WORKSPACE: 'true'/g)).toHaveLength(5);
+    expect(
+      template.match(/GEMINI_CLI_HOME: \$\{\{ runner\.temp \}\}\/probe-gemini-home-/g),
+    ).toHaveLength(5);
+    expect(new Set(template.match(/probe-gemini-home-[a-z-]+/g)).size).toBe(5);
     expect(template).toContain('Gemini CLI rejected the GitHub Actions checkout as untrusted.');
   });
 

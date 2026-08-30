@@ -185,6 +185,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/probe-codex-home-planner
           prompt-file: .codex-task/planner-prompt.md
           output-file: .codex-task/planner-result.json
           sandbox: read-only
@@ -215,6 +216,7 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-planner
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -234,8 +236,10 @@ jobs:
         env:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.planner_codex.outcome }}
+          CODEX_MESSAGE: ${{ steps.planner_codex.outputs.final-message }}
           GEMINI_OUTCOME: ${{ steps.planner_gemini.outcome }}
           GEMINI_ERROR: ${{ steps.planner_gemini.outputs.error }}
+          GEMINI_SUMMARY: ${{ steps.planner_gemini.outputs.summary }}
           RESTORED_PLAN: ${{ steps.restored_plan.outputs.restored }}
         run: |
           node <<'NODE'
@@ -247,7 +251,15 @@ jobs:
           try {
             planner = JSON.parse(fs.readFileSync('.codex-task/planner-result.json', 'utf8'));
           } catch {
-            planner = { status: 'FAILED', summary: 'The planner did not return valid structured output.', acceptanceCriteria: [], implementationSteps: [], validationCommands: [], filesToInspect: [], risks: [], question: '' };
+            try {
+              planner = JSON.parse(String(process.env.CODEX_MESSAGE || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+            } catch {
+              try {
+                planner = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              } catch {
+                planner = { status: 'FAILED', summary: 'The planner did not return valid structured output.', acceptanceCriteria: [], implementationSteps: [], validationCommands: [], filesToInspect: [], risks: [], question: '' };
+              }
+            }
           }
           const arrays = ['acceptanceCriteria', 'implementationSteps', 'validationCommands', 'filesToInspect', 'risks'];
           if (providerOutcome !== 'success') {
@@ -399,6 +411,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/probe-codex-home-coder
           prompt-file: .codex-task/prompt.md
           output-file: .codex-task/result.json
           sandbox: workspace-write
@@ -427,6 +440,7 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-coder
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -486,6 +500,7 @@ jobs:
         if: always() && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
         env:
           CODEX_OUTCOME: ${{ steps.codex.outcome }}
+          CODEX_MESSAGE: ${{ steps.codex.outputs.final-message }}
           GEMINI_OUTCOME: ${{ steps.gemini.outcome }}
           GEMINI_ERROR: ${{ steps.gemini.outputs.error }}
           GEMINI_SUMMARY: ${{ steps.gemini.outputs.summary }}
@@ -500,9 +515,13 @@ jobs:
           try {
             result = JSON.parse(fs.readFileSync('.codex-task/result.json', 'utf8'));
           } catch {
-            result = process.env.PROVIDER === 'gemini' && agentOutcome === 'success'
-              ? { status: 'COMPLETED', summary: String(process.env.GEMINI_SUMMARY || 'Gemini completed the task.'), question: '', validation: [], risks: '', noChangesRequired: false }
-              : { status: 'FAILED', summary: 'The selected coding agent did not return a valid structured result.', question: '', validation: [], risks: '', noChangesRequired: false };
+            try {
+              result = JSON.parse(String(process.env.CODEX_MESSAGE || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+            } catch {
+              result = process.env.PROVIDER === 'gemini' && agentOutcome === 'success'
+                ? { status: 'COMPLETED', summary: String(process.env.GEMINI_SUMMARY || 'Gemini completed the task.'), question: '', validation: [], risks: '', noChangesRequired: false }
+                : { status: 'FAILED', summary: 'The selected coding agent did not return a valid structured result.', question: '', validation: [], risks: '', noChangesRequired: false };
+            }
           }
           if (agentOutcome !== 'success') {
             result.status = 'FAILED';
@@ -519,7 +538,9 @@ jobs:
                 result.summary = 'GEMINI_API_KEY is missing, invalid, or not permitted to use the selected model. Replace the GitHub Actions secret, then reply retry in Slack.';
               }
             } else {
-              result.summary = diagnoses[process.env.API_DIAGNOSIS] || result.summary;
+              result.summary = diagnoses[process.env.API_DIAGNOSIS] || (process.env.API_DIAGNOSIS === 'api_available'
+                ? 'The Codex implementation pass exited before returning its structured result even though the OpenAI API is available. Check the Run Codex step for a Codex Action runtime or sandbox error.'
+                : result.summary);
             }
           }
           if (result.status === 'NEEDS_CLARIFICATION' && !String(result.question || '').trim()) result.status = 'FAILED';
@@ -694,6 +715,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/probe-codex-home-verifier
           prompt-file: .codex-task/verifier-prompt.md
           output-file: .codex-task/verifier-result.json
           sandbox: read-only
@@ -735,6 +757,7 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-verifier
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -755,6 +778,7 @@ jobs:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.verifier_codex.outcome }}
           GEMINI_OUTCOME: ${{ steps.verifier_gemini.outcome }}
+          GEMINI_SUMMARY: ${{ steps.verifier_gemini.outputs.summary }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -767,7 +791,11 @@ jobs:
           try {
             verifier = JSON.parse(fs.readFileSync('.codex-task/verifier-result.json', 'utf8'));
           } catch {
-            verifier = { status: 'FAILED', summary: 'The verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+            try {
+              verifier = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+            } catch {
+              verifier = { status: 'FAILED', summary: 'The verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+            }
           }
           if (providerOutcome !== 'success') {
             verifier.status = 'FAILED';
@@ -881,6 +909,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/probe-codex-home-repair
           prompt-file: .codex-task/repair-prompt.md
           output-file: .codex-task/repair-result.json
           sandbox: workspace-write
@@ -909,6 +938,7 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-repair
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -929,6 +959,7 @@ jobs:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.repair_codex.outcome }}
           GEMINI_OUTCOME: ${{ steps.repair_gemini.outcome }}
+          GEMINI_SUMMARY: ${{ steps.repair_gemini.outputs.summary }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -939,7 +970,11 @@ jobs:
           try {
             result = JSON.parse(fs.readFileSync('.codex-task/repair-result.json', 'utf8'));
           } catch {
-            result = { status: 'FAILED', summary: 'The repair agent did not return valid structured output.', question: '', validation: [], risks: '', noChangesRequired: false };
+            try {
+              result = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+            } catch {
+              result = { status: 'FAILED', summary: 'The repair agent did not return valid structured output.', question: '', validation: [], risks: '', noChangesRequired: false };
+            }
           }
           if (providerOutcome !== 'success') {
             result.status = 'FAILED';
@@ -1111,6 +1146,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/probe-codex-home-repair-verifier
           prompt-file: .codex-task/repair-verifier-prompt.md
           output-file: .codex-task/repair-verifier-result.json
           sandbox: read-only
@@ -1152,6 +1188,7 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-repair-verifier
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -1172,6 +1209,7 @@ jobs:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.repair_verifier_codex.outcome }}
           GEMINI_OUTCOME: ${{ steps.repair_verifier_gemini.outcome }}
+          GEMINI_SUMMARY: ${{ steps.repair_verifier_gemini.outputs.summary }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -1184,7 +1222,11 @@ jobs:
           try {
             verifier = JSON.parse(fs.readFileSync('.codex-task/repair-verifier-result.json', 'utf8'));
           } catch {
-            verifier = { status: 'FAILED', summary: 'The repair verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+            try {
+              verifier = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+            } catch {
+              verifier = { status: 'FAILED', summary: 'The repair verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+            }
           }
           if (providerOutcome !== 'success') {
             verifier.status = 'FAILED';
