@@ -17,6 +17,16 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('gemini_model: gemini-3.1-flash-lite');
   });
 
+  it('fails fast with actionable target repository configuration diagnostics', () => {
+    expect(template).toContain('name: Validate target repository configuration');
+    expect(template).toContain('OPENAI_KEY_PRESENT');
+    expect(template).toContain('GEMINI_KEY_PRESENT');
+    expect(template).toContain('Add GEMINI_API_KEY under target repository Settings');
+    expect(template).toContain('Add Actions variable CODING_AGENT_APPROVAL_BOT_LOGIN');
+    expect(template).toContain('AGENTS.md is missing from the target repository root');
+    expect(template).toContain('Target repository configuration is incomplete:');
+  });
+
   it('accepts canonical repository casing and only trusts the configured app bot', () => {
     expect(template).toContain(
       'metadata.repository.toLowerCase() !== process.env.REPOSITORY.toLowerCase()',
