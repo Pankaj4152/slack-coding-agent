@@ -1,5 +1,7 @@
 # Bounded Repair Loop Design
 
+Implementation status: completed on `PRobe` in `846cc3c` with Slack progress reporting in `adea419`. Controlled outcome measurements remain pending.
+
 ## Purpose
 
 The repair loop gives the coding provider one focused opportunity to correct an implementation that independent verification classified as `NEEDS_FIX`. It uses the verifier's exact evidence and deterministic failures, then reruns the complete verification gate.

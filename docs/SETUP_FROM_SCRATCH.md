@@ -209,7 +209,7 @@ gemini-3.1-flash-lite
 
 The unpaid Gemini API-key tier is intended for experimentation and light use. Quotas and eligible models are controlled by Google and may change. When the quota is exhausted or rate limited, the failure is reported in the Slack thread and the requester can retry later.
 
-Every attempt first runs a read-only planning pass. If the plan is approved, the workflow runs the selected provider for implementation and then for an independent read-only verification pass. Plan provider quota and cost for up to three invocations per successful attempt; clarification and rejected plans stop before implementation, and coding failures stop before verification.
+Every attempt first runs a read-only planning pass. If the plan is approved, the workflow runs the selected provider for implementation and then for an independent read-only verification pass. An actionable `NEEDS_FIX` decision permits exactly one focused repair followed by fresh deterministic checks and fresh read-only verification. Plan provider quota and cost for three invocations normally and up to five when repair is used; clarification, rejection, provider failure, cancellation, and untrustworthy verification output stop without automatic repair.
 
 The workflow automatically runs common package scripts when available. To configure repository-specific deterministic checks, add this repository Actions variable:
 

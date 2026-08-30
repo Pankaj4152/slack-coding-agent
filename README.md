@@ -111,7 +111,7 @@ This copies `templates/coding-agent.yml` to `.github/workflows/coding-agent.yml`
 
 Alternatively, copy the two templates manually. In the target repository, set the Actions variable `CODING_AGENT_PROVIDER` to `codex` or `gemini`; Codex is the default. Add the matching Actions secret: `OPENAI_API_KEY` for Codex or `GEMINI_API_KEY` for Gemini. Gemini uses `gemini-3.1-flash-lite`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**.
 
-Each successful workflow attempt uses the selected provider for a read-only planning pass, a coding pass, and an independent read-only verification pass. Account for up to three invocations when setting provider quotas, cost limits, and the 60-minute workflow timeout. A clarification or rejected plan stops before coding; a coding failure stops before verification.
+Each successful workflow attempt uses the selected provider for a read-only planning pass, a coding pass, and an independent read-only verification pass. If verification returns actionable `NEEDS_FIX` evidence, the workflow permits exactly one focused repair pass followed by fresh deterministic checks and a fresh read-only verifier. Account for three provider invocations normally and up to five when repair is used. A clarification or rejected plan stops before coding; provider failure, cancellation, and untrustworthy verification output stop without automatic repair.
 
 By default, deterministic verification discovers fixed package-script names: `format:check`, `lint`, `typecheck`, `test`, and `build`. Repositories that need different commands can set the trusted Actions variable `CODING_AGENT_VALIDATION_COMMANDS_JSON` to a JSON array with at most eight commands:
 

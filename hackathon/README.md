@@ -30,4 +30,5 @@ These documents will be updated with measured results as each implementation pha
 - Controlled planner measurements and representative live trajectories are still pending.
 - Independent deterministic and agent verification is implemented as a required gate before PR creation.
 - Controlled verifier measurements and representative live trajectories are still pending.
-- The next product iteration is a bounded verification-driven repair loop.
+- One bounded verification-driven repair attempt is implemented, including fresh deterministic checks, fresh independent verification, Slack progress, and safe stopping without automatic merge.
+- Controlled repair-loop measurements and representative recovery/failure trajectories are still pending.

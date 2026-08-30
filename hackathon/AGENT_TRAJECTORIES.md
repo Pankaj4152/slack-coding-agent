@@ -12,12 +12,16 @@ Capture the approved planner JSON passed to the coding agent, file/tool activity
 
 ## Verifier trajectory
 
-Capture the approved plan, bounded repository diff, deterministic validation JSON, verifier prompt, normalized criterion-by-criterion decision, scope review, risks, and confidence. Include at least one `PASS` and one `NEEDS_FIX` example. Show that `NEEDS_FIX` stops before branch and PR creation.
+Capture the approved plan, bounded repository diff, deterministic validation JSON, verifier prompt, normalized criterion-by-criterion decision, scope review, risks, and confidence. Include at least one direct `PASS` and one `NEEDS_FIX` example. Show that `NEEDS_FIX` stops before branch and PR creation unless the one bounded repair completes and fresh verification returns `PASS`.
+
+## Repair trajectory
+
+Capture immutable attempt-0 coding, validation, and verifier artifacts; the focused repair prompt; repair result; fresh deterministic evidence; and fresh verifier decision. Include one recovered `NEEDS_FIX -> repair -> PASS` case and one exhausted `NEEDS_FIX -> repair -> NEEDS_FIX/FAILED` case. Demonstrate that no second automatic repair occurs and that the exhausted case returns to the manual Slack `retry` flow.
 
 ## Required phase transitions
 
 ```text
-issue accepted -> planning -> clarification or coding -> deterministic checks -> verification -> PR/no-change/failure
+issue accepted -> planning -> clarification or coding -> deterministic checks -> verification -> optional one repair + fresh verification -> PR/no-change/failure
 ```
 
 A cancellation may terminate any active phase. Late planner, provider, completion, failure, or PR events must not reverse that terminal state.

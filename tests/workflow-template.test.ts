@@ -89,5 +89,9 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('name: Select final verification outcome');
     expect(template).toContain("steps.final_verification.outputs.status == 'PASS'");
     expect(template).toContain('Recovered after one bounded repair attempt.');
+    expect(template.match(/^ {6}- name: Run Codex repair$/gm)).toHaveLength(1);
+    expect(template.match(/^ {6}- name: Run Gemini repair$/gm)).toHaveLength(1);
+    expect(template).toContain("if: steps.verifier.outputs.status == 'NEEDS_FIX'");
+    expect(template).toContain("steps.repair_result.outputs.status != 'NEEDS_CLARIFICATION'");
   });
 });
