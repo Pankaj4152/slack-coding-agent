@@ -2,6 +2,7 @@ node_modules/
 .npm-cache/
 dist/
 coverage/
+tmp/
 .env
 .env.*
 !.env.example
@@ -13,3 +14,6 @@ data/*
 .DS_Store
 codex-output.txt
 codex-prompt.txt
+hackathon/results/*
+!hackathon/results/.gitkeep
+.neon

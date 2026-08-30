@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   repository_name TEXT NOT NULL,
   github_issue_number INTEGER NOT NULL,
   status TEXT NOT NULL CHECK(status IN (
-    'creating', 'ready', 'working', 'needs_input', 'pr_created', 'failed', 'completed'
+    'creating', 'ready', 'working', 'needs_input', 'awaiting_approval', 'pr_created', 'failed', 'cancelled', 'completed'
   )),
   last_agent_question_comment_id INTEGER,
   created_at TEXT NOT NULL,

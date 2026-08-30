@@ -63,6 +63,151 @@ describe('GithubWebhookHandler', () => {
     expect(postMessage).toHaveBeenCalledOnce();
   });
 
+  it('posts a started update once and transitions the task to working', async () => {
+    await tasks.updateStatus('123e4567-e89b-12d3-a456-426614174000', 'ready');
+    const { handler, postMessage } = makeHandler();
+    const payload = {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 56,
+        body: '<!-- agent-started -->\n\nThe coding agent is inspecting the repository.',
+        user: { login: 'github-actions[bot]' },
+      },
+    };
+    await handler.handle('issue_comment', 'delivery-started', payload);
+    await handler.handle('issue_comment', 'delivery-started-copy', payload);
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'The coding agent is inspecting the repository.' }),
+    );
+  });
+
+  it('forwards a detailed failure to the mapped Slack thread', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-failed', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 57,
+        body: '<!-- agent-failed -->\n\nCodex did not return a valid structured result.\n\nRun: https://github.test/run',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('failed');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: expect.stringContaining('Codex did not return a valid structured result.'),
+      }),
+    );
+  });
+
+  it('forwards an approved plan without changing the working state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-plan', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 59,
+        body: '<!-- agent-plan -->\n\nPlan approved with 3 acceptance criteria. Implementation is starting.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: 'Plan approved with 3 acceptance criteria. Implementation is starting.',
+      }),
+    );
+  });
+
+  it('forwards a passing verification report without changing the working state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-verification', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 60,
+        body: '<!-- agent-verification -->\n\nVerification passed with 92% confidence.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: 'Verification passed with 92% confidence.',
+      }),
+    );
+  });
+
+  it('moves an approval request into the awaiting approval state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-approval-required', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 62,
+        body: '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->\n\nReply `approve` to continue.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'awaiting_approval',
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Reply `approve` to continue.' }),
+    );
+  });
+
+  it('forwards bounded repair progress without changing the working state', async () => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', 'delivery-repair', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 61,
+        body: '<!-- agent-repair -->\n\nVerification found actionable issues. Starting the one allowed repair attempt.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: '1.1',
+        text: 'Verification found actionable issues. Starting the one allowed repair attempt.',
+      }),
+    );
+  });
+
+  it.each([
+    ['coding', '<!-- agent-coding -->\n\nImplementation started.'],
+    ['validation', '<!-- agent-validating -->\n\nValidation started.'],
+  ])('forwards %s progress without changing the working state', async (phase, body) => {
+    const { handler, postMessage } = makeHandler();
+    await handler.handle('issue_comment', `delivery-${phase}`, {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: { id: 63, body, user: { login: 'github-actions[bot]' } },
+    });
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe('working');
+    expect(postMessage).toHaveBeenCalledOnce();
+  });
+
   it('posts an opened PR in the mapped Slack thread', async () => {
     const { handler, postMessage } = makeHandler();
     await handler.handle('pull_request', 'delivery-pr', {
@@ -82,5 +227,48 @@ describe('GithubWebhookHandler', () => {
     expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channel: 'C1', thread_ts: '1.1' }),
     );
+  });
+
+  it('does not let a late completion overwrite a cancelled task', async () => {
+    await tasks.updateStatus('123e4567-e89b-12d3-a456-426614174000', 'cancelled');
+    const { handler, postMessage } = makeHandler();
+
+    await handler.handle('issue_comment', 'delivery-late-completion', {
+      action: 'created',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      issue: { number: 10 },
+      comment: {
+        id: 58,
+        body: '<!-- agent-completed -->\n\nA late result arrived.',
+        user: { login: 'github-actions[bot]' },
+      },
+    });
+
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'cancelled',
+    );
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a PR notification for a cancelled task', async () => {
+    await tasks.updateStatus('123e4567-e89b-12d3-a456-426614174000', 'cancelled');
+    const { handler, postMessage } = makeHandler();
+
+    await handler.handle('pull_request', 'delivery-late-pr', {
+      action: 'opened',
+      repository: { owner: { login: 'owner' }, name: 'repo' },
+      pull_request: {
+        title: 'Late change',
+        html_url: 'https://github.test/owner/repo/pull/2',
+        body: '<!-- agent-pr task-id="123e4567-e89b-12d3-a456-426614174000" issue="10" -->',
+        user: { login: 'github-actions[bot]' },
+        head: { ref: 'agent/issue-10' },
+      },
+    });
+
+    expect((await tasks.findById('123e4567-e89b-12d3-a456-426614174000'))?.status).toBe(
+      'cancelled',
+    );
+    expect(postMessage).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,14 @@
 # slack-coding-agent
 
-An internal MVP that turns a Slack mention into a GitHub issue, runs an official OpenAI Codex GitHub Action in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
+An internal MVP that turns a Slack mention into a GitHub issue, runs Codex or Gemini in the selected repository, and returns clarification questions or pull requests to the original Slack thread. It is designed for one small engineering team and never merges code.
+
+## Intended user and bottleneck
+
+This project is for small engineering teams that already coordinate work in Slack but cannot afford to have every incomplete request manually translated into repository context, acceptance criteria, implementation steps, validation, and a reviewable pull request. The bottleneck is not typing code alone: it is preserving intent across Slack and GitHub, asking for missing decisions at the right time, following repository-specific instructions, proving that the change works, and keeping consequential publication under human control.
+
+The workflow turns one mapped Slack thread into an auditable GitHub task. Separate planning, coding, deterministic validation, independent verification, one bounded repair, and optional plan approval reduce the amount of unverified agent output a developer must untangle. The useful final result is evidence attached to a human-reviewed pull request, never an automatic merge.
+
+For the complete Slack, GitHub App, Render, database, and target-repository walkthrough, see [Setup from scratch](docs/SETUP_FROM_SCRATCH.md).
 
 ## Architecture and workflow
 
@@ -25,11 +33,13 @@ The normal flow is:
 1. A user mentions the bot with `repo: owner/repository` and a task.
 2. The service validates the repository allowlist, creates labels and an issue, and stores the mapping.
 3. Label `agent-ready` starts the target repository workflow.
-4. Codex reads the issue, comments, and `AGENTS.md`, edits and validates the checkout, and returns structured output.
-5. Deterministic workflow steps create a branch, commit, push, and PR. Codex does not perform GitHub state changes.
-6. GitHub sends an `issue_comment` or `pull_request` webhook, and the service posts into the original Slack thread.
+4. A read-only planner inspects the issue conversation, `AGENTS.md`, and repository context. It produces acceptance criteria and an implementation plan or asks one clarification question.
+5. Repositories may optionally require the original requester to approve the exact plan fingerprint before coding begins.
+6. The selected Codex or Gemini coding provider receives the approved plan, edits and validates the checkout, and returns structured output.
+7. Deterministic workflow steps create a branch, commit, push, and PR. Agents do not perform GitHub state changes.
+8. GitHub sends an `issue_comment` or `pull_request` webhook, and the service posts planning, approval, coding, validation, repair, verification, clarification, failure, or PR progress into the original Slack thread.
 
-For clarification, the workflow comments with `<!-- agent-question -->` and applies `agent-needs-input`. The first human thread reply is posted to the issue, the label changes back to `agent-ready`, and a fresh workflow run reads the full conversation. Failures use `<!-- agent-failed -->`; this explicit final workflow step avoids unreliable `workflow_run` correlation.
+For clarification, the planner or coding agent comments with `<!-- agent-question -->` and applies `agent-needs-input`. The first human thread reply is posted to the issue, the label changes back to `agent-ready`, and a fresh workflow run reads the full conversation. Failures use `<!-- agent-failed -->`; this explicit final workflow step avoids unreliable `workflow_run` correlation.
 
 ## Prerequisites
 
@@ -39,9 +49,9 @@ For clarification, the workflow comments with `<!-- agent-question -->` and appl
 - An OpenAI API key stored as a GitHub Actions secret in each target repository or organization
 - A public HTTPS URL for GitHub webhooks (a secure Cloudflare Tunnel or ngrok tunnel is sufficient for local development)
 
-`OPENAI_API_KEY` does **not** belong in this service's environment.
+`OPENAI_API_KEY` and `GEMINI_API_KEY` do **not** belong in this service's environment. They are target-repository GitHub Actions secrets.
 
-By default, the service uses SQLite at `DATABASE_PATH`. For Render Free or multi-instance deployments, set `DATABASE_URL` to a PostgreSQL connection string (for example Supabase's Shared Pooler session-mode URL). When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
+By default, the service uses SQLite at `DATABASE_PATH`. For Render or multi-instance deployments, set `DATABASE_URL` to a pooled Neon/PostgreSQL connection string. When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
 
 ## Slack app setup
 
@@ -83,8 +93,10 @@ The service automatically ensures these labels exist whenever it creates a task:
 - `agent-ready`
 - `agent-working`
 - `agent-needs-input`
+- `agent-awaiting-approval`
 - `agent-pr-created`
 - `agent-failed`
+- `agent-cancelled`
 
 ## Repository allowlist
 
@@ -106,7 +118,19 @@ npx tsx scripts/install-workflow.ts /path/to/target-repository
 
 This copies `templates/coding-agent.yml` to `.github/workflows/coding-agent.yml` and creates `AGENTS.md` only if one is absent. Review `AGENTS.md`, fill in exact setup and validation commands, then commit both files.
 
-Alternatively, copy the two templates manually. In the target repository or organization, add an Actions secret named `OPENAI_API_KEY`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**. The workflow uses `openai/codex-action@v1` with its current documented `prompt-file`, `output-file`, `output-schema`, `sandbox`, and `safety-strategy` inputs.
+Alternatively, copy the two templates manually. In the target repository, set the Actions variable `CODING_AGENT_PROVIDER` to `codex` or `gemini`; Codex is the default. Add the matching Actions secret: `OPENAI_API_KEY` for Codex or `GEMINI_API_KEY` for Gemini. Gemini uses `gemini-3.1-flash-lite`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**.
+
+To require requester approval after planning and before code edits, set `CODING_AGENT_REQUIRE_APPROVAL=true`. Set `CODING_AGENT_APPROVAL_BOT_LOGIN` to the exact bot login used by this service's GitHub App (the default is `pankaj-slack-coding-agent[bot]`). The workflow accepts approval only from that bot and only when its SHA-256 fingerprint matches the freshly generated plan.
+
+Each successful workflow attempt uses the selected provider for a read-only planning pass, a coding pass, and an independent read-only verification pass. If verification returns actionable `NEEDS_FIX` evidence, the workflow permits exactly one focused repair pass followed by fresh deterministic checks and a fresh read-only verifier. Account for three provider invocations normally and up to five when repair is used. A clarification or rejected plan stops before coding; provider failure, cancellation, and untrustworthy verification output stop without automatic repair.
+
+By default, deterministic verification discovers fixed package-script names: `format:check`, `lint`, `typecheck`, `test`, and `build`. Repositories that need different commands can set the trusted Actions variable `CODING_AGENT_VALIDATION_COMMANDS_JSON` to a JSON array with at most eight commands:
+
+```json
+["npm run lint", "npm run typecheck", "npm test"]
+```
+
+Only repository administrators should control this variable. Planner-generated command suggestions are never executed directly. Commands run without provider secrets or a GitHub token, with bounded output and a ten-minute timeout per command.
 
 The workflow checks that an issue has valid `slack-agent-metadata`, serializes runs per issue, uses least-privilege workflow permissions, and creates `agent/issue-N`. It never pushes to the default branch, merges, changes branch protection, or deploys.
 
@@ -143,15 +167,16 @@ docker compose up --build
 
 The multistage image runs as the non-root `node` user. Compose persists `/app/data` in a named volume and the image health check calls `/health`.
 
-### Supabase/PostgreSQL option
+### Neon/PostgreSQL option
 
-The application supports either SQLite or PostgreSQL. Create a Supabase project, click **Connect**, and use the **Shared Pooler session mode** connection string for an IPv4-only Render service. Add it as:
+The application supports either SQLite or PostgreSQL. In Neon, open the project, click **Connect**, and copy both the pooled and direct connection strings:
 
 ```env
-DATABASE_URL=postgres://postgres.<project-ref>:<password>@aws-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+DATABASE_URL=postgresql://user:<password>@ep-example-pooler.<region>.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://user:<password>@ep-example.<region>.aws.neon.tech/neondb?sslmode=require
 ```
 
-When `DATABASE_URL` is set, the service initializes PostgreSQL automatically and uses parameterized queries for task mappings and processed events. Do not use the Supabase anon or service-role API keys for this connection. Supabase documents session mode for persistent backend services and transaction mode for serverless workloads. See [Supabase database connections](https://supabase.com/docs/guides/database/connecting-to-postgres).
+When `DATABASE_URL` is set, the service initializes PostgreSQL automatically and uses parameterized queries for task mappings and processed events. The running service uses the pooled URL. `npm run db:migrate` prefers `DATABASE_URL_UNPOOLED`, because schema migrations and database dumps should use a direct connection. See [Neon connection pooling](https://neon.com/docs/connect/connection-pooling).
 
 To initialize the PostgreSQL schema without starting Slack or the webhook server, run:
 
@@ -172,17 +197,26 @@ Repository names must be explicit `owner/repository` identifiers—not URLs, pat
 
 When the bot asks a question, reply in the same Slack thread. Only the first valid human reply while the task is waiting is accepted. Review the returned PR manually; it will not be merged.
 
+The service checks GitHub App access, repository state, Issues availability, and the presence of `.github/workflows/coding-agent.yml` before creating a task. Workflow start, clarification, failure, completion, and pull-request updates are posted back to the original Slack thread. When Codex fails, the workflow safely distinguishes exhausted API credits, an invalid API key, and temporary rate limiting so Slack receives an actionable reason.
+
+If approval is enabled, only the original requester can reply with exactly `approve`; a changed plan requires approval again. If a task fails, the requester can reply with exactly `retry` in the same Slack thread. The service reuses the existing GitHub issue and starts a new workflow run; other Slack users cannot approve or retry someone else's task. The requester can reply `cancel` while a task is active or awaiting approval to prevent the workflow from publishing a branch or pull request.
+
 ## Troubleshooting
 
 - **Invalid startup configuration:** compare `.env` to `.env.example`. Do not wrap numeric IDs in nonnumeric text.
 - **Issue creation fails:** confirm the App installation ID, repository selection, and Issues permission.
 - **No workflow run:** confirm the template is installed on the default branch, the issue has `agent-ready`, Actions is enabled, and labels exist.
 - **Codex fails immediately:** confirm `OPENAI_API_KEY` is an Actions secret in the target repository/organization.
+- **Task fails and needs another attempt:** reply `retry` in the original Slack thread as the user who created the task.
+- **Plan is awaiting approval:** reply `approve` in the original Slack thread as the user who created the task.
+- **Cancel an active task:** reply `cancel` in the original Slack thread as the user who created the task.
 - **No Slack reply:** invite the bot to the channel and verify the matching message history scope/event.
 - **Webhook returns 401:** the GitHub App and service must use the identical webhook secret; proxies must preserve the raw request body.
 - **PR creation fails:** enable workflow PR creation and confirm `contents: write` / `pull-requests: write` are permitted.
 
 Logs are structured and redact credentials. They intentionally contain task IDs, repository/issue identifiers, channels, threads, event types, and status transitions, but not tokens, private keys, authorization headers, source files, or API keys.
+
+`GET /health` and `GET /healthz` are liveness checks. `GET /readyz` also verifies that the configured SQLite or PostgreSQL task store is reachable. Processed Slack and GitHub delivery IDs are retained for 90 days and cleaned up daily.
 
 ## Security notes
 
@@ -197,6 +231,8 @@ Issue and comment content is untrusted prompt input. The workflow passes it thro
 - First human reply answers pending clarification
 - No automatic merge or deployment
 - No persistent Codex session; clarification starts a new workflow run
+- No persistent planner session; retries and clarification reruns rebuild the plan from the full issue conversation
+- Verification permits one bounded evidence-driven repair; a second failure stops for manual retry
 - SQLite supports one service instance only; no high availability
 - No retry queue, dashboard, sophisticated permission engine, or PR review-feedback automation
 - Workflow dependency setup is repository-specific and must be documented in target `AGENTS.md`

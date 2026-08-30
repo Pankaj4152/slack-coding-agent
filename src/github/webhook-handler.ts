@@ -34,6 +34,77 @@ export class GithubWebhookHandler {
     if (!marker) return;
     const task = await this.tasks.findByGithubIssue(owner, repo, issueNumber);
     if (!task) return;
+    if (task.status === 'cancelled') {
+      this.logger.info(
+        { taskId: task.id, eventType: marker.type },
+        'Ignored agent webhook for cancelled task',
+      );
+      return;
+    }
+
+    if (marker.type === 'started') {
+      if (!(await this.tasks.transitionStatus(task.id, 'ready', 'working'))) return;
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text: marker.content || 'The coding agent started working on this task.',
+      });
+      return;
+    }
+
+    if (marker.type === 'planned') {
+      if (task.status === 'ready') {
+        if (!(await this.tasks.transitionStatus(task.id, 'ready', 'working'))) return;
+      } else if (task.status !== 'working') {
+        return;
+      }
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text: marker.content || 'Planning is complete and implementation is starting.',
+      });
+      return;
+    }
+
+    if (marker.type === 'approvalRequired') {
+      if (task.status === 'ready') {
+        if (!(await this.tasks.transitionStatus(task.id, 'ready', 'awaiting_approval'))) return;
+      } else if (task.status === 'working') {
+        if (!(await this.tasks.transitionStatus(task.id, 'working', 'awaiting_approval'))) return;
+      } else if (task.status !== 'awaiting_approval') {
+        return;
+      }
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text:
+          marker.content ||
+          'The plan is ready. Reply `approve` to start implementation or `cancel` to stop.',
+      });
+      return;
+    }
+
+    if (
+      marker.type === 'coding' ||
+      marker.type === 'validating' ||
+      marker.type === 'repairing' ||
+      marker.type === 'verified'
+    ) {
+      if (task.status !== 'working') return;
+      const fallback = {
+        coding: 'Plan accepted. Implementation is starting.',
+        validating: 'Implementation finished. Deterministic validation is running.',
+        repairing:
+          'Independent verification found actionable issues. One bounded repair attempt is starting.',
+        verified: 'Independent verification passed.',
+      }[marker.type];
+      await this.slack.chat.postMessage({
+        channel: task.channelId,
+        thread_ts: task.threadTs,
+        text: marker.content || fallback,
+      });
+      return;
+    }
 
     if (marker.type === 'question') {
       if (!marker.content) return;
@@ -60,7 +131,7 @@ export class GithubWebhookHandler {
       await this.slack.chat.postMessage({
         channel: task.channelId,
         thread_ts: task.threadTs,
-        text: `The coding agent workflow failed.${marker.content ? `\n\n${quoteForSlack(marker.content)}` : ''}\n\nOpen the GitHub issue for details and retry by adding the \`agent-ready\` label.`,
+        text: `The coding agent workflow failed.${marker.content ? `\n\n${quoteForSlack(marker.content)}` : ''}\n\nReply \`retry\` in this thread to start another attempt.`,
       });
       return;
     }
@@ -90,6 +161,13 @@ export class GithubWebhookHandler {
       (await this.tasks.findById(marker.taskId)) ??
       (await this.tasks.findByGithubIssue(owner, repo, marker.issueNumber));
     if (!task) return;
+    if (task.status === 'cancelled') {
+      this.logger.info(
+        { taskId: task.id, eventType: 'pull-request' },
+        'Ignored PR for cancelled task',
+      );
+      return;
+    }
 
     await this.tasks.updateStatus(task.id, 'pr_created');
     await replaceAgentLabels(

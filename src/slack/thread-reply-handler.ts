@@ -2,6 +2,7 @@ import type { AllMiddlewareArgs, SlackEventMiddlewareArgs } from '@slack/bolt';
 import type { Octokit } from '@octokit/rest';
 import type { Logger } from 'pino';
 import { replaceAgentLabels } from '../github/labels.js';
+import { parseApprovalFingerprint } from '../github/markers.js';
 import type { TaskStore } from '../tasks/task-repository.js';
 
 type MessageArgs = AllMiddlewareArgs & SlackEventMiddlewareArgs<'message'>;
@@ -34,7 +35,48 @@ export function createThreadReplyHandler(deps: {
     const threadTs = raw.thread_ts as string;
     const channel = raw.channel as string;
     const task = await deps.tasks.findBySlackThread(teamId, channel, threadTs);
-    if (!task || task.status !== 'needs_input') return;
+    if (!task) return;
+    const text = (raw.text as string).trim();
+    if (
+      text.toLowerCase() === 'cancel' &&
+      !['completed', 'pr_created', 'cancelled'].includes(task.status)
+    ) {
+      if (raw.user !== task.requesterUserId) {
+        await client.chat.postMessage({
+          channel,
+          thread_ts: threadTs,
+          text: 'Only the person who created this task can cancel it.',
+        });
+        return;
+      }
+      await cancelTask(task, deps, client, channel, threadTs);
+      return;
+    }
+    if (task.status === 'failed' && text.toLowerCase() === 'retry') {
+      if (raw.user !== task.requesterUserId) {
+        await client.chat.postMessage({
+          channel,
+          thread_ts: threadTs,
+          text: 'Only the person who created this task can retry it.',
+        });
+        return;
+      }
+      await retryFailedTask(task, deps, client, channel, threadTs);
+      return;
+    }
+    if (task.status === 'awaiting_approval' && text.toLowerCase() === 'approve') {
+      if (raw.user !== task.requesterUserId) {
+        await client.chat.postMessage({
+          channel,
+          thread_ts: threadTs,
+          text: 'Only the person who created this task can approve its plan.',
+        });
+        return;
+      }
+      await approvePlan(task, deps, client, channel, threadTs);
+      return;
+    }
+    if (task.status !== 'needs_input') return;
     if (!(await deps.tasks.transitionStatus(task.id, 'needs_input', 'ready'))) return;
 
     try {
@@ -69,6 +111,142 @@ export function createThreadReplyHandler(deps: {
       });
     }
   };
+}
+
+async function cancelTask(
+  task: NonNullable<Awaited<ReturnType<TaskStore['findBySlackThread']>>>,
+  deps: { tasks: TaskStore; github: Octokit; logger: Logger },
+  client: MessageArgs['client'],
+  channel: string,
+  threadTs: string,
+): Promise<void> {
+  if (!(await deps.tasks.transitionStatus(task.id, task.status, 'cancelled'))) return;
+  try {
+    await deps.github.rest.issues.createComment({
+      owner: task.repositoryOwner,
+      repo: task.repositoryName,
+      issue_number: task.githubIssueNumber,
+      body: '<!-- agent-cancelled -->\n\nTask cancelled by the original requester from Slack. Do not publish agent changes.',
+    });
+    await replaceAgentLabels(
+      deps.github,
+      task.repositoryOwner,
+      task.repositoryName,
+      task.githubIssueNumber,
+      'agent-cancelled',
+      [
+        'agent-ready',
+        'agent-working',
+        'agent-needs-input',
+        'agent-awaiting-approval',
+        'agent-failed',
+      ],
+    );
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: 'Task cancelled. Any running agent may finish its current computation, but it will not publish a branch or pull request.',
+    });
+  } catch (error) {
+    await deps.tasks.transitionStatus(task.id, 'cancelled', task.status);
+    deps.logger.error({ err: error, taskId: task.id }, 'Task cancellation failed');
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: "I couldn't cancel the task in GitHub. Its previous state has been restored; please try again.",
+    });
+  }
+}
+
+async function approvePlan(
+  task: NonNullable<Awaited<ReturnType<TaskStore['findBySlackThread']>>>,
+  deps: { tasks: TaskStore; github: Octokit; logger: Logger },
+  client: MessageArgs['client'],
+  channel: string,
+  threadTs: string,
+): Promise<void> {
+  if (!(await deps.tasks.transitionStatus(task.id, 'awaiting_approval', 'ready'))) return;
+  try {
+    const comments = await deps.github.paginate(deps.github.rest.issues.listComments, {
+      owner: task.repositoryOwner,
+      repo: task.repositoryName,
+      issue_number: task.githubIssueNumber,
+      per_page: 100,
+    });
+    const fingerprint = comments
+      .slice()
+      .reverse()
+      .filter((comment) => comment.user?.login === 'github-actions[bot]')
+      .map((comment) => parseApprovalFingerprint(String(comment.body || '')))
+      .find((value): value is string => Boolean(value));
+    if (!fingerprint) throw new Error('Missing plan approval fingerprint');
+    await deps.github.rest.issues.createComment({
+      owner: task.repositoryOwner,
+      repo: task.repositoryName,
+      issue_number: task.githubIssueNumber,
+      body: `<!-- agent-approved plan-sha256="${fingerprint}" -->\n\nPlan approved by the original requester from Slack.`,
+    });
+    await replaceAgentLabels(
+      deps.github,
+      task.repositoryOwner,
+      task.repositoryName,
+      task.githubIssueNumber,
+      'agent-ready',
+      ['agent-awaiting-approval', 'agent-working', 'agent-needs-input', 'agent-failed'],
+    );
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: 'Plan approved. I restarted the workflow, which will verify the exact plan fingerprint before coding.',
+    });
+  } catch (error) {
+    await deps.tasks.transitionStatus(task.id, 'ready', 'awaiting_approval');
+    deps.logger.error({ err: error, taskId: task.id }, 'Plan approval submission failed');
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: "I couldn't record that approval in GitHub. The task is still awaiting approval; please try again.",
+    });
+  }
+}
+
+async function retryFailedTask(
+  task: NonNullable<Awaited<ReturnType<TaskStore['findBySlackThread']>>>,
+  deps: { tasks: TaskStore; github: Octokit; logger: Logger },
+  client: MessageArgs['client'],
+  channel: string,
+  threadTs: string,
+): Promise<void> {
+  if (!(await deps.tasks.transitionStatus(task.id, 'failed', 'ready'))) return;
+  try {
+    await deps.github.rest.issues.createComment({
+      owner: task.repositoryOwner,
+      repo: task.repositoryName,
+      issue_number: task.githubIssueNumber,
+      body: '<!-- agent-retry -->\n\nRetry requested from the original Slack thread.',
+    });
+    await replaceAgentLabels(
+      deps.github,
+      task.repositoryOwner,
+      task.repositoryName,
+      task.githubIssueNumber,
+      'agent-ready',
+      ['agent-failed', 'agent-working', 'agent-needs-input'],
+    );
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: 'Retry accepted. I restarted the coding agent on the same GitHub issue.',
+    });
+  } catch (error) {
+    await deps.tasks.transitionStatus(task.id, 'ready', 'failed');
+    deps.logger.error({ err: error, taskId: task.id }, 'Task retry failed');
+    await client.chat.postMessage({
+      channel,
+      thread_ts: threadTs,
+      text: "I couldn't restart the coding agent. The task is still marked as failed; check the GitHub App permissions and try again.",
+    });
+  }
 }
 
 function escapeComment(text: string): string {

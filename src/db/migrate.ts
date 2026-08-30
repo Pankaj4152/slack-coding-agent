@@ -4,10 +4,13 @@ import { PostgresTaskRepository } from './postgres.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  if (!config.databaseUrl) {
-    throw new Error('DATABASE_URL is required for PostgreSQL migration; no database was changed.');
+  const migrationUrl = config.databaseUrlUnpooled ?? config.databaseUrl;
+  if (!migrationUrl) {
+    throw new Error(
+      'DATABASE_URL_UNPOOLED or DATABASE_URL is required for PostgreSQL migration; no database was changed.',
+    );
   }
-  const repository = await PostgresTaskRepository.connect(config.databaseUrl);
+  const repository = await PostgresTaskRepository.connect(migrationUrl);
   await repository.close();
   console.log('PostgreSQL schema is ready (tasks and processed_events).');
 }

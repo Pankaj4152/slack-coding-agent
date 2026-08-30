@@ -1,0 +1,21 @@
+{
+  "runId": "final-YYYYMMDD-01",
+  "workflow": "final",
+  "applicationCommit": "final-reviewed-PRobe-commit",
+  "caseFileCommit": "7bd9369",
+  "provider": "codex-or-gemini",
+  "model": "record-the-same-exact-model-as-baseline",
+  "providerTier": "record-the-same-tier-as-baseline",
+  "runner": "ubuntu-latest",
+  "nodeVersion": "same-exact-version-as-baseline",
+  "startedAtUtc": "YYYY-MM-DDTHH:mm:ssZ",
+  "timeoutMinutesPerAttempt": 60,
+  "maximumAttemptsPerCase": 1,
+  "targetRepository": "same-synthetic-owner/synthetic-repository",
+  "startingCommit": "same-full-target-starting-commit",
+  "pricingSourceAndDate": "same provider pricing URL and access-date method",
+  "controlledDifferences": [
+    "Only declared workflow capabilities may differ: planner, deterministic gate, verifier, bounded repair, progress, and optional approval."
+  ],
+  "notes": "Record whether optional plan approval is enabled and use that setting for every final case."
+}

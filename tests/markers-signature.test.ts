@@ -1,14 +1,33 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { parseAgentMarker, parsePrTaskMarker } from '../src/github/markers.js';
+import {
+  parseAgentMarker,
+  parseApprovalFingerprint,
+  parsePrTaskMarker,
+} from '../src/github/markers.js';
 import { verifyWebhookSignature } from '../src/github/webhook-signature.js';
 
 describe('agent markers', () => {
-  it('parses question, completion, failure, and PR markers', () => {
+  it('parses planning, question, completion, failure, and PR markers', () => {
     expect(parseAgentMarker('x\n<!-- agent-question -->\nWhich format?')).toEqual({
       type: 'question',
       content: 'Which format?',
     });
+    expect(parseAgentMarker('<!-- agent-plan --> ready')?.type).toBe('planned');
+    expect(parseAgentMarker('<!-- agent-coding --> coding')?.type).toBe('coding');
+    expect(parseAgentMarker('<!-- agent-validating --> checks')?.type).toBe('validating');
+    expect(
+      parseAgentMarker(
+        '<!-- agent-approval-required plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" --> approve',
+      )?.type,
+    ).toBe('approvalRequired');
+    expect(
+      parseApprovalFingerprint(
+        '<!-- agent-approved plan-sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" -->',
+      ),
+    ).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(parseAgentMarker('<!-- agent-repair --> fixing')?.type).toBe('repairing');
+    expect(parseAgentMarker('<!-- agent-verification --> pass')?.type).toBe('verified');
     expect(parseAgentMarker('<!-- agent-completed --> done')?.type).toBe('completed');
     expect(parseAgentMarker('<!-- agent-failed --> nope')?.type).toBe('failed');
     expect(parsePrTaskMarker('<!-- agent-pr task-id="abc" issue="42" -->')).toEqual({
