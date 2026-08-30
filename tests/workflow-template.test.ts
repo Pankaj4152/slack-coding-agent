@@ -15,6 +15,8 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("if: env.AGENT_PROVIDER == 'gemini'");
     expect(template).toContain('uses: google-github-actions/run-gemini-cli@v0');
     expect(template).toContain('gemini_model: gemini-3.1-flash-lite');
+    expect(template.match(/GEMINI_CLI_TRUST_WORKSPACE: 'true'/g)).toHaveLength(5);
+    expect(template).toContain('Gemini CLI rejected the GitHub Actions checkout as untrusted.');
   });
 
   it('fails fast with actionable target repository configuration diagnostics', () => {
