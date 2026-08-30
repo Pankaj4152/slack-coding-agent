@@ -45,4 +45,14 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("replace(/<!--/g, '&lt;!--')");
     expect(template).toContain('<!-- agent-pr task-id=');
   });
+
+  it('runs bounded trusted validation without provider secrets', () => {
+    expect(template).toContain('CODING_AGENT_VALIDATION_COMMANDS_JSON');
+    expect(template).toContain("['format:check', 'lint', 'typecheck', 'test', 'build']");
+    expect(template).toContain('timeout: 600000');
+    expect(template).toContain('maxBuffer: 1024 * 1024');
+    expect(template).toContain('delete cleanEnv[key]');
+    expect(template).toContain('repositoryModifiedByChecks');
+    expect(template).toContain('deterministic-validation.json');
+  });
 });

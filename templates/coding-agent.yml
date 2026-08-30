@@ -390,6 +390,80 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
           gh issue edit "$ISSUE_NUMBER" --remove-label "agent-working" --add-label "agent-needs-input"
 
+      - name: Check cancellation before verification
+        id: verification_cancel
+        if: steps.result.outputs.status == 'COMPLETED'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" --jq '.labels[].name' | grep -Fxq 'agent-cancelled'; then
+            echo "cancelled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cancelled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run deterministic validation
+        id: deterministic_validation
+        if: steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
+        env:
+          VALIDATION_COMMANDS_JSON: ${{ vars.CODING_AGENT_VALIDATION_COMMANDS_JSON || '' }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const childProcess = require('child_process');
+          const beforeStatus = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          const configured = String(process.env.VALIDATION_COMMANDS_JSON || '').trim();
+          let commands;
+          if (configured) {
+            commands = JSON.parse(configured);
+            if (!Array.isArray(commands) || commands.length > 8 || commands.some((command) => typeof command !== 'string' || !command.trim() || command.length > 300)) {
+              throw new Error('CODING_AGENT_VALIDATION_COMMANDS_JSON must contain at most 8 nonempty command strings of at most 300 characters');
+            }
+            commands = commands.map((command) => ({ label: command, file: 'bash', args: ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command] }));
+          } else {
+            commands = [];
+            if (fs.existsSync('package.json')) {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              const scripts = pkg.scripts || {};
+              const manager = fs.existsSync('pnpm-lock.yaml') ? ['corepack', ['pnpm']] : fs.existsSync('yarn.lock') ? ['corepack', ['yarn']] : ['npm', ['run']];
+              for (const name of ['format:check', 'lint', 'typecheck', 'test', 'build']) {
+                if (typeof scripts[name] === 'string') commands.push({ label: `${manager[0]} ${[...manager[1], name].join(' ')}`, file: manager[0], args: [...manager[1], name] });
+              }
+            }
+          }
+          const cleanEnv = { ...process.env, CI: 'true' };
+          for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'ACTIONS_RUNTIME_TOKEN']) delete cleanEnv[key];
+          const redact = (value) => String(value || '')
+            .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
+            .replace(/xox[baprs]-[A-Za-z0-9-]+/g, '[REDACTED]')
+            .replace(/(?:ghp|github_pat)_[A-Za-z0-9_]+/g, '[REDACTED]');
+          const results = commands.map((command) => {
+            const started = Date.now();
+            const run = childProcess.spawnSync(command.file, command.args, {
+              encoding: 'utf8', env: cleanEnv, timeout: 600000, maxBuffer: 1024 * 1024,
+            });
+            const output = redact(`${run.stdout || ''}${run.stderr || ''}`).slice(-4000);
+            return {
+              command: command.label,
+              exitCode: typeof run.status === 'number' ? run.status : null,
+              passed: run.status === 0 && !run.error,
+              timedOut: run.error?.code === 'ETIMEDOUT',
+              durationMs: Date.now() - started,
+              output,
+            };
+          });
+          const afterStatus = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          const repositoryModifiedByChecks = beforeStatus !== afterStatus;
+          const report = {
+            source: configured ? 'repository-variable' : 'discovered-package-scripts',
+            passed: results.every((result) => result.passed) && !repositoryModifiedByChecks,
+            repositoryModifiedByChecks,
+            results,
+          };
+          fs.writeFileSync('.codex-task/deterministic-validation.json', JSON.stringify(report, null, 2));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `passed=${report.passed}\n`);
+          NODE
+
       - name: Create branch and pull request
         id: create_pr
         if: steps.result.outputs.status == 'COMPLETED'
