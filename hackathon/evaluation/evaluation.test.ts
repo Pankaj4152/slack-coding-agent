@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compareEvaluations,
   createObservationTemplate,
   evaluate,
   parseCases,
   parseObservations,
   parseRunManifest,
+  renderComparisonReport,
   renderMarkdownReport,
   type EvaluationCase,
   type Observation,
@@ -120,5 +122,39 @@ describe('hackathon evaluation', () => {
     expect(report).toContain('# Baseline Evaluation Report');
     expect(report).toContain('1/1 (100%)');
     expect(report).toContain('| case-1 | PASS | Verified |');
+  });
+
+  it('compares complete controlled runs and reports metric deltas', () => {
+    const baseline = evaluate([evaluationCase], [passingObservation({ costUsd: 0.1 })]);
+    const final = evaluate(
+      [evaluationCase],
+      [passingObservation({ costUsd: 0.2, providerInvocations: 5 })],
+    );
+    const comparison = compareEvaluations(
+      manifest,
+      baseline,
+      { ...manifest, workflow: 'final', applicationCommit: 'abcdef0' },
+      final,
+    );
+    expect(comparison).toMatchObject({
+      complete: true,
+      comparable: true,
+      change: { costPerTaskUsd: 0.1, providerInvocationsPerTask: 2 },
+    });
+    expect(renderComparisonReport(comparison)).toContain('Complete and directly comparable.');
+  });
+
+  it('flags controlled mismatches and incomplete runs', () => {
+    const pending = evaluate([evaluationCase], createObservationTemplate([evaluationCase]));
+    const comparison = compareEvaluations(
+      manifest,
+      pending,
+      { ...manifest, workflow: 'final', model: 'different-model' },
+      pending,
+    );
+    expect(comparison.complete).toBe(false);
+    expect(comparison.comparable).toBe(false);
+    expect(comparison.controlledMismatches[0]).toContain('model');
+    expect(renderComparisonReport(comparison)).toContain('Pending:');
   });
 });
