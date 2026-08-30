@@ -139,9 +139,48 @@ jobs:
           fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngemini-artifacts/\ngha-creds-*.json\n');
           NODE
 
+      - name: Restore an approved plan snapshot
+        id: restored_plan
+        env:
+          REQUIRE_APPROVAL: ${{ vars.CODING_AGENT_REQUIRE_APPROVAL || 'false' }}
+          APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
+          RUNNER_TEMP_DIR: ${{ runner.temp }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const path = require('path');
+          let restored = false;
+          if (String(process.env.REQUIRE_APPROVAL || '').toLowerCase() === 'true') {
+            const comments = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP_DIR, 'agent-comments.json'))).flat();
+            const approved = comments
+              .filter((comment) => comment.user?.login === process.env.APPROVAL_BOT_LOGIN)
+              .map((comment) => String(comment.body || '').match(/<!--\s*agent-approved\s+plan-sha256="([a-f0-9]{64})"\s*-->/i)?.[1]?.toLowerCase())
+              .filter(Boolean)
+              .reverse();
+            for (const fingerprint of approved) {
+              const snapshot = comments
+                .slice()
+                .reverse()
+                .filter((comment) => comment.user?.login === 'github-actions[bot]')
+                .map((comment) => String(comment.body || '').match(/<!--\s*agent-plan-snapshot\s+plan-sha256="([a-f0-9]{64})"\s+data="([A-Za-z0-9+/=]+)"\s*-->/i))
+                .find((match) => match?.[1]?.toLowerCase() === fingerprint);
+              if (!snapshot?.[2]) continue;
+              const json = Buffer.from(snapshot[2], 'base64').toString('utf8');
+              if (crypto.createHash('sha256').update(json).digest('hex') !== fingerprint) continue;
+              const planner = JSON.parse(json);
+              if (planner.status !== 'READY' || !Array.isArray(planner.acceptanceCriteria) || !planner.acceptanceCriteria.length || !Array.isArray(planner.implementationSteps) || !planner.implementationSteps.length) continue;
+              fs.writeFileSync('.codex-task/planner-result.json', json);
+              restored = true;
+              break;
+            }
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `restored=${restored}\n`);
+          NODE
+
       - name: Run Codex planner
         id: planner_codex
-        if: env.AGENT_PROVIDER == 'codex'
+        if: env.AGENT_PROVIDER == 'codex' && steps.restored_plan.outputs.restored != 'true'
         continue-on-error: true
         uses: openai/codex-action@v1
         with:
@@ -171,7 +210,7 @@ jobs:
 
       - name: Run Gemini planner
         id: planner_gemini
-        if: env.AGENT_PROVIDER == 'gemini'
+        if: env.AGENT_PROVIDER == 'gemini' && steps.restored_plan.outputs.restored != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
         env:
@@ -197,12 +236,13 @@ jobs:
           CODEX_OUTCOME: ${{ steps.planner_codex.outcome }}
           GEMINI_OUTCOME: ${{ steps.planner_gemini.outcome }}
           GEMINI_ERROR: ${{ steps.planner_gemini.outputs.error }}
+          RESTORED_PLAN: ${{ steps.restored_plan.outputs.restored }}
         run: |
           node <<'NODE'
           const fs = require('fs');
           const crypto = require('crypto');
           const childProcess = require('child_process');
-          const providerOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          const providerOutcome = process.env.RESTORED_PLAN === 'true' ? 'success' : process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
           let planner;
           try {
             planner = JSON.parse(fs.readFileSync('.codex-task/planner-result.json', 'utf8'));
@@ -247,7 +287,7 @@ jobs:
           gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --remove-label "agent-working" --add-label "agent-needs-input"
 
       - name: Report approved plan
-        if: steps.planner.outputs.status == 'READY'
+        if: steps.planner.outputs.status == 'READY' && steps.restored_plan.outputs.restored != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -292,7 +332,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PLAN_FINGERPRINT: ${{ steps.approval.outputs.fingerprint }}
         run: |
-          printf '<!-- agent-approval-required plan-sha256="%s" -->\n\nThe plan is ready for review. Reply `approve` in the original Slack thread to start implementation, or `cancel` to stop.\n' "$PLAN_FINGERPRINT" > "$RUNNER_TEMP/comment.md"
+          node <<'NODE'
+          const fs = require('fs');
+          const json = JSON.stringify(JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8')));
+          if (Buffer.byteLength(json) > 40000) throw new Error('Planner result is too large to persist safely for approval.');
+          const data = Buffer.from(json).toString('base64');
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/plan-snapshot.md', `<!-- agent-plan-snapshot plan-sha256="${process.env.PLAN_FINGERPRINT}" data="${data}" -->\n`);
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/comment.md', `<!-- agent-approval-required plan-sha256="${process.env.PLAN_FINGERPRINT}" -->\n\nThe plan is ready for review. Reply \`approve\` in the original Slack thread to start implementation, or \`cancel\` to stop.\n`);
+          NODE
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/plan-snapshot.md"
           gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --remove-label "agent-working" --add-label "agent-awaiting-approval"
 

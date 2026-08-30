@@ -63,6 +63,10 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('name: Request plan approval');
     expect(template).toContain('<!-- agent-approval-required plan-sha256=');
     expect(template).toContain('agent-approved\\s+plan-sha256=');
+    expect(template).toContain('name: Restore an approved plan snapshot');
+    expect(template).toContain('agent-plan-snapshot\\s+plan-sha256=');
+    expect(template).toContain("steps.restored_plan.outputs.restored != 'true'");
+    expect(template).toContain("process.env.RESTORED_PLAN === 'true' ? 'success'");
     expect(template).toContain("steps.approval.outputs.approved == 'true'");
     expect(template.indexOf('name: Check plan approval')).toBeLessThan(
       template.indexOf('\n      - name: Run Codex\n'),
