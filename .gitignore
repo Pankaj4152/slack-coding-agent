@@ -2,6 +2,7 @@ node_modules/
 .npm-cache/
 dist/
 coverage/
+tmp/
 .env
 .env.*
 !.env.example
