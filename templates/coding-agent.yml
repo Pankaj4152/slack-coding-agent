@@ -174,6 +174,8 @@ jobs:
         if: env.AGENT_PROVIDER == 'gemini'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -194,6 +196,7 @@ jobs:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.planner_codex.outcome }}
           GEMINI_OUTCOME: ${{ steps.planner_gemini.outcome }}
+          GEMINI_ERROR: ${{ steps.planner_gemini.outputs.error }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -209,7 +212,16 @@ jobs:
           const arrays = ['acceptanceCriteria', 'implementationSteps', 'validationCommands', 'filesToInspect', 'risks'];
           if (providerOutcome !== 'success') {
             planner.status = 'FAILED';
-            planner.summary = `The ${process.env.PROVIDER || 'coding'} planner could not complete the planning pass.`;
+            const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
+            if (process.env.PROVIDER === 'gemini' && /not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
+              planner.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
+            } else if (process.env.PROVIDER === 'gemini' && /resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+              planner.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
+            } else if (process.env.PROVIDER === 'gemini' && /api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
+              planner.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
+            } else {
+              planner.summary = `The ${process.env.PROVIDER || 'coding'} planner could not complete the planning pass. Check the planner step for its provider error.`;
+            }
           }
           if (!['READY', 'NEEDS_CLARIFICATION', 'REJECTED'].includes(planner.status)) planner.status = 'FAILED';
           if (arrays.some((key) => !Array.isArray(planner[key]))) planner.status = 'FAILED';
@@ -365,6 +377,8 @@ jobs:
         if: env.AGENT_PROVIDER == 'gemini' && steps.planner.outputs.status == 'READY' && steps.approval.outputs.approved == 'true' && steps.planner_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -671,6 +685,8 @@ jobs:
         if: env.AGENT_PROVIDER == 'gemini' && steps.result.outputs.status == 'COMPLETED' && steps.verification_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -843,6 +859,8 @@ jobs:
         if: env.AGENT_PROVIDER == 'gemini' && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
@@ -1084,6 +1102,8 @@ jobs:
         if: env.AGENT_PROVIDER == 'gemini' && steps.repair_result.outputs.status == 'COMPLETED' && steps.repair_verification_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: gemini-3.1-flash-lite
