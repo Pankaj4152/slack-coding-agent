@@ -111,7 +111,15 @@ This copies `templates/coding-agent.yml` to `.github/workflows/coding-agent.yml`
 
 Alternatively, copy the two templates manually. In the target repository, set the Actions variable `CODING_AGENT_PROVIDER` to `codex` or `gemini`; Codex is the default. Add the matching Actions secret: `OPENAI_API_KEY` for Codex or `GEMINI_API_KEY` for Gemini. Gemini uses `gemini-3.1-flash-lite`. Ensure GitHub Actions is allowed to create pull requests under **Settings → Actions → General → Workflow permissions**.
 
-Each workflow attempt uses the selected provider for a read-only planning pass and, when the plan is approved, a separate coding pass. Account for both invocations when setting provider quotas, cost limits, and the 60-minute workflow timeout. A clarification or rejected plan stops before the coding invocation.
+Each successful workflow attempt uses the selected provider for a read-only planning pass, a coding pass, and an independent read-only verification pass. Account for up to three invocations when setting provider quotas, cost limits, and the 60-minute workflow timeout. A clarification or rejected plan stops before coding; a coding failure stops before verification.
+
+By default, deterministic verification discovers fixed package-script names: `format:check`, `lint`, `typecheck`, `test`, and `build`. Repositories that need different commands can set the trusted Actions variable `CODING_AGENT_VALIDATION_COMMANDS_JSON` to a JSON array with at most eight commands:
+
+```json
+["npm run lint", "npm run typecheck", "npm test"]
+```
+
+Only repository administrators should control this variable. Planner-generated command suggestions are never executed directly. Commands run without provider secrets or a GitHub token, with bounded output and a ten-minute timeout per command.
 
 The workflow checks that an issue has valid `slack-agent-metadata`, serializes runs per issue, uses least-privilege workflow permissions, and creates `agent/issue-N`. It never pushes to the default branch, merges, changes branch protection, or deploys.
 
@@ -211,6 +219,7 @@ Issue and comment content is untrusted prompt input. The workflow passes it thro
 - No automatic merge or deployment
 - No persistent Codex session; clarification starts a new workflow run
 - No persistent planner session; retries and clarification reruns rebuild the plan from the full issue conversation
+- Verification failures stop safely; automatic verification-driven repair is not enabled
 - SQLite supports one service instance only; no high availability
 - No retry queue, dashboard, sophisticated permission engine, or PR review-feedback automation
 - Workflow dependency setup is repository-specific and must be documented in target `AGENTS.md`

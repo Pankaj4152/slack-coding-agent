@@ -27,4 +27,6 @@ These documents will be updated with measured results as each implementation pha
 - Live baseline measurements are still pending and are not represented by fabricated values.
 - A provider-neutral planner stage is implemented with clarification, rejection, cancellation, Slack progress, and PR-evidence integration.
 - Controlled planner measurements and representative live trajectories are still pending.
-- The next product iteration is independent verification against the planner's acceptance criteria.
+- Independent deterministic and agent verification is implemented as a required gate before PR creation.
+- Controlled verifier measurements and representative live trajectories are still pending.
+- The next product iteration is a bounded verification-driven repair loop.

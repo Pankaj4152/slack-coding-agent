@@ -10,10 +10,14 @@ Capture the planner prompt, provider, normalized planner JSON, repository reads,
 
 Capture the approved planner JSON passed to the coding agent, file/tool activity, structured result, changed-file summary, and reported validation. Clearly distinguish provider claims from deterministic command evidence.
 
+## Verifier trajectory
+
+Capture the approved plan, bounded repository diff, deterministic validation JSON, verifier prompt, normalized criterion-by-criterion decision, scope review, risks, and confidence. Include at least one `PASS` and one `NEEDS_FIX` example. Show that `NEEDS_FIX` stops before branch and PR creation.
+
 ## Required phase transitions
 
 ```text
-issue accepted -> planning -> clarification or coding -> PR/no-change/failure
+issue accepted -> planning -> clarification or coding -> deterministic checks -> verification -> PR/no-change/failure
 ```
 
 A cancellation may terminate any active phase. Late planner, provider, completion, failure, or PR events must not reverse that terminal state.

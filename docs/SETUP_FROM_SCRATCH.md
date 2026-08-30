@@ -209,7 +209,16 @@ gemini-3.1-flash-lite
 
 The unpaid Gemini API-key tier is intended for experimentation and light use. Quotas and eligible models are controlled by Google and may change. When the quota is exhausted or rate limited, the failure is reported in the Slack thread and the requester can retry later.
 
-Every attempt first runs a read-only planning pass. If the plan is approved, the workflow runs the selected provider a second time for implementation. Plan provider quota and cost for two invocations per successful coding attempt; clarification and rejected plans stop before implementation.
+Every attempt first runs a read-only planning pass. If the plan is approved, the workflow runs the selected provider for implementation and then for an independent read-only verification pass. Plan provider quota and cost for up to three invocations per successful attempt; clarification and rejected plans stop before implementation, and coding failures stop before verification.
+
+The workflow automatically runs common package scripts when available. To configure repository-specific deterministic checks, add this repository Actions variable:
+
+```text
+Name: CODING_AGENT_VALIDATION_COMMANDS_JSON
+Value: ["npm run lint","npm run typecheck","npm test"]
+```
+
+The value must be a JSON array containing no more than eight commands. Treat it as administrator-controlled configuration. Commands proposed in Slack, issues, or planner output are not executed directly.
 
 ### Codex
 
