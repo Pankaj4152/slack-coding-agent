@@ -31,6 +31,14 @@ The baseline performs a direct coding pass after repository preflight. The candi
 
 These documents will be updated with measured results as each implementation phase is completed. No result should be described as final until it has been reproduced using the documented commands.
 
+Run the automated submission gate at any time:
+
+```text
+npm run submission:check
+```
+
+It writes ignored JSON and Markdown reports under `hackathon/results/`. `PENDING` means external evidence is still required; `FAIL` means a repository or evidence-integrity defect must be fixed before submission.
+
 ## Current progress
 
 - Company feature branches have been integrated without changing the no-automatic-merge contract.

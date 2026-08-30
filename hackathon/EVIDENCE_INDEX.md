@@ -50,6 +50,7 @@ Use this index as the single navigation page when assembling the final HackerEar
 
 - Judging map: [`JUDGING_MAP.md`](./JUDGING_MAP.md)
 - Submission checklist: [`SUBMISSION_CHECKLIST.md`](./SUBMISSION_CHECKLIST.md)
+- Automated gate: `npm run submission:check` -> ignored `hackathon/results/submission-readiness.md`.
 - No credentials, `.env`, databases, private logs, or private source in tracked or linked artifacts.
 - No automatic merge behavior.
 - No numerical improvement claim while comparison status is pending or non-comparable.

@@ -15,6 +15,7 @@
     "evaluate:baseline": "tsx hackathon/evaluation/run-baseline.ts",
     "evaluate:final": "tsx hackathon/evaluation/run-final.ts",
     "evaluate:compare": "tsx hackathon/evaluation/compare.ts",
+    "submission:check": "tsx hackathon/submission-readiness.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",

@@ -56,7 +56,6 @@ The evaluation runner and reporting format are implemented. Numerical results re
 | Verified task completion rate    |  Pending | Pending | Pending |
 | First-attempt success rate       |  Pending | Pending | Pending |
 | Clarification precision          |  Pending | Pending | Pending |
-| Clarification precision          |  Pending | Pending | Pending |
 | Average elapsed time per task    |  Pending | Pending | Pending |
 | Human intervention time per task |  Pending | Pending | Pending |
 | Provider invocations per task    |  Pending | Pending | Pending |

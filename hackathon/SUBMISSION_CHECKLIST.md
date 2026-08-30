@@ -58,3 +58,4 @@ The attached hackathon brief requires four deliverables. Complete every checkbox
 - [ ] `npm run lint`, `npm run typecheck`, and `npm test` pass.
 - [ ] Repository-wide formatting status is disclosed or fixed before submission.
 - [ ] All links and judge permissions are tested.
+- [ ] `npm run submission:check` reports `PASS` with no pending or failed items.
