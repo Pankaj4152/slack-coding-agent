@@ -151,6 +151,7 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const crypto = require('crypto');
           const childProcess = require('child_process');
           const providerOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
           let planner;
@@ -410,19 +411,26 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const crypto = require('crypto');
           const childProcess = require('child_process');
-          const beforeStatus = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+          childProcess.execFileSync('git', ['add', '-N', '--', '.']);
+          const fingerprint = () => crypto.createHash('sha256')
+            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          const beforeFingerprint = fingerprint();
           const configured = String(process.env.VALIDATION_COMMANDS_JSON || '').trim();
-          let commands;
-          if (configured) {
-            commands = JSON.parse(configured);
-            if (!Array.isArray(commands) || commands.length > 8 || commands.some((command) => typeof command !== 'string' || !command.trim() || command.length > 300)) {
-              throw new Error('CODING_AGENT_VALIDATION_COMMANDS_JSON must contain at most 8 nonempty command strings of at most 300 characters');
-            }
-            commands = commands.map((command) => ({ label: command, file: 'bash', args: ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command] }));
-          } else {
-            commands = [];
-            if (fs.existsSync('package.json')) {
+          let commands = [];
+          let configurationError = '';
+          try {
+            if (configured) {
+              commands = JSON.parse(configured);
+              if (!Array.isArray(commands) || commands.length > 8 || commands.some((command) => typeof command !== 'string' || !command.trim() || command.length > 300)) {
+                throw new Error('must contain at most 8 nonempty command strings of at most 300 characters');
+              }
+              commands = commands.map((command) => ({ label: command, file: 'bash', args: ['--noprofile', '--norc', '-eo', 'pipefail', '-c', command] }));
+            } else if (fs.existsSync('package.json')) {
               const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
               const scripts = pkg.scripts || {};
               const manager = fs.existsSync('pnpm-lock.yaml') ? ['corepack', ['pnpm']] : fs.existsSync('yarn.lock') ? ['corepack', ['yarn']] : ['npm', ['run']];
@@ -430,6 +438,9 @@ jobs:
                 if (typeof scripts[name] === 'string') commands.push({ label: `${manager[0]} ${[...manager[1], name].join(' ')}`, file: manager[0], args: [...manager[1], name] });
               }
             }
+          } catch (error) {
+            configurationError = `Invalid validation configuration: ${error instanceof Error ? error.message : 'unknown error'}`;
+            commands = [];
           }
           const cleanEnv = { ...process.env, CI: 'true' };
           for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'ACTIONS_RUNTIME_TOKEN']) delete cleanEnv[key];
@@ -452,11 +463,11 @@ jobs:
               output,
             };
           });
-          const afterStatus = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
-          const repositoryModifiedByChecks = beforeStatus !== afterStatus;
+          const repositoryModifiedByChecks = beforeFingerprint !== fingerprint();
           const report = {
             source: configured ? 'repository-variable' : 'discovered-package-scripts',
-            passed: results.every((result) => result.passed) && !repositoryModifiedByChecks,
+            passed: !configurationError && results.every((result) => result.passed) && !repositoryModifiedByChecks,
+            configurationError,
             repositoryModifiedByChecks,
             results,
           };
@@ -469,13 +480,14 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const crypto = require('crypto');
           const childProcess = require('child_process');
           const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
           const coding = JSON.parse(fs.readFileSync('.codex-task/normalized-result.json', 'utf8'));
           const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
           const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
           const stat = childProcess.execFileSync('git', ['diff', '--stat'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
-          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40'], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
           const diff = rawDiff.length > 120000 ? `${rawDiff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : rawDiff;
           const prompt = `You are independently verifying a coding-agent change. Do not edit repository files.
 
@@ -505,7 +517,12 @@ jobs:
 
           DIFF:
           ${diff}`;
-          fs.writeFileSync('.codex-task/pre-verifier-status.txt', status);
+          const fingerprint = crypto.createHash('sha256')
+            .update(status)
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          fs.writeFileSync('.codex-task/pre-verifier-fingerprint.txt', fingerprint);
           fs.writeFileSync('.codex-task/verifier-prompt.md', prompt, { mode: 0o600 });
           NODE
 
@@ -578,6 +595,7 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const crypto = require('crypto');
           const childProcess = require('child_process');
           const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
           const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
@@ -601,11 +619,18 @@ jobs:
           const criteriaPass = exactCoverage && verifier.criteria.every((item) => item.status === 'PASS' && String(item.evidence || '').trim());
           if (verifier.status === 'PASS' && (!checks.passed || !criteriaPass || verifier.scopeIssues.length > 0)) {
             verifier.status = 'NEEDS_FIX';
-            verifier.summary = 'Verification evidence did not support PASS for every criterion, deterministic check, and scope constraint.';
+            const failedCommands = checks.results.filter((item) => !item.passed).map((item) => item.command);
+            verifier.summary = failedCommands.length
+              ? `Deterministic validation failed: ${failedCommands.join(', ')}`
+              : checks.configurationError || 'Verification evidence did not support PASS for every criterion and scope constraint.';
           }
-          const beforeStatus = fs.readFileSync('.codex-task/pre-verifier-status.txt', 'utf8');
-          const afterStatus = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
-          if (beforeStatus !== afterStatus) {
+          const beforeFingerprint = fs.readFileSync('.codex-task/pre-verifier-fingerprint.txt', 'utf8');
+          const afterFingerprint = crypto.createHash('sha256')
+            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update('\0')
+            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .digest('hex');
+          if (beforeFingerprint !== afterFingerprint) {
             verifier.status = 'FAILED';
             verifier.summary = 'The verifier modified repository files during its read-only review.';
           }

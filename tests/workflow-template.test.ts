@@ -53,6 +53,9 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('maxBuffer: 1024 * 1024');
     expect(template).toContain('delete cleanEnv[key]');
     expect(template).toContain('repositoryModifiedByChecks');
+    expect(template).toContain("['add', '-N', '--', '.']");
+    expect(template).toContain('beforeFingerprint');
+    expect(template).toContain('configurationError');
     expect(template).toContain('deterministic-validation.json');
   });
 
@@ -63,7 +66,7 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('"enum": ["PASS", "NEEDS_FIX", "FAILED"]');
     expect(template).toContain('exactCoverage');
     expect(template).toContain('criteriaPass');
-    expect(template).toContain('pre-verifier-status.txt');
+    expect(template).toContain('pre-verifier-fingerprint.txt');
     expect(template).toContain("steps.verifier.outputs.status == 'PASS'");
   });
 
