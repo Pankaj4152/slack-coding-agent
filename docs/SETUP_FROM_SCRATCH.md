@@ -142,10 +142,11 @@ GITHUB_INSTALLATION_ID=...
 GITHUB_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----
 GITHUB_WEBHOOK_SECRET=...
 DATABASE_URL=postgresql://...?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://...?sslmode=require
 ALLOWED_REPOSITORIES=owner/repo-one,owner/repo-two
 ```
 
-Render supplies `PORT`; do not hardcode a different public port. The GitHub App webhook secret must exactly match `GITHUB_WEBHOOK_SECRET`. Save the variables and deploy.
+Use the pooled Neon/PostgreSQL URL for `DATABASE_URL` and its matching direct URL for `DATABASE_URL_UNPOOLED`. The application uses the pooled URL at runtime, while `npm run db:migrate` prefers the direct URL. Render supplies `PORT`; do not hardcode a different public port. The GitHub App webhook secret must exactly match `GITHUB_WEBHOOK_SECRET`. Save the variables and deploy.
 
 Verify:
 

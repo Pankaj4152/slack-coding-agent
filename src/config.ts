@@ -15,6 +15,7 @@ const schema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().min(1),
   DATABASE_PATH: z.string().min(1).default('./data/slack-coding-agent.sqlite'),
   DATABASE_URL: z.string().min(1).optional(),
+  DATABASE_URL_UNPOOLED: z.string().min(1).optional(),
   ALLOWED_REPOSITORIES: z.string().optional(),
 });
 
@@ -40,6 +41,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     githubWebhookSecret: values.GITHUB_WEBHOOK_SECRET,
     databasePath: resolve(values.DATABASE_PATH),
     databaseUrl: values.DATABASE_URL,
+    databaseUrlUnpooled: values.DATABASE_URL_UNPOOLED,
     allowedRepositories: loadAllowedRepositories(values.ALLOWED_REPOSITORIES),
   };
 }

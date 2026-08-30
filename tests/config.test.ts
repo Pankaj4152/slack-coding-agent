@@ -12,6 +12,7 @@ const valid = {
   GITHUB_WEBHOOK_SECRET: 'webhook',
   DATABASE_PATH: ':memory:',
   DATABASE_URL: 'postgres://postgres:password@example.com:5432/postgres',
+  DATABASE_URL_UNPOOLED: 'postgres://postgres:password@direct.example.com:5432/postgres',
   ALLOWED_REPOSITORIES: 'owner/repo,team/project',
 };
 
@@ -21,6 +22,7 @@ describe('loadConfig', () => {
     expect(config.githubPrivateKey).toBe('line1\nline2');
     expect(config.allowedRepositories.has('owner/repo')).toBe(true);
     expect(config.databaseUrl).toContain('postgres://');
+    expect(config.databaseUrlUnpooled).toContain('direct.example.com');
   });
 
   it('fails fast with field names when required values are absent', () => {

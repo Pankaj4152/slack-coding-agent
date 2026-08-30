@@ -51,7 +51,7 @@ For clarification, the planner or coding agent comments with `<!-- agent-questio
 
 `OPENAI_API_KEY` and `GEMINI_API_KEY` do **not** belong in this service's environment. They are target-repository GitHub Actions secrets.
 
-By default, the service uses SQLite at `DATABASE_PATH`. For Render Free or multi-instance deployments, set `DATABASE_URL` to a PostgreSQL connection string (for example Supabase's Shared Pooler session-mode URL). When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
+By default, the service uses SQLite at `DATABASE_PATH`. For Render or multi-instance deployments, set `DATABASE_URL` to a pooled Neon/PostgreSQL connection string. When `DATABASE_URL` is present, PostgreSQL is used and `DATABASE_PATH` is ignored. The PostgreSQL adapter creates the same `tasks` and `processed_events` tables automatically. Use a TLS-enabled connection string and keep the password only in the hosting provider's secret environment variables.
 
 ## Slack app setup
 
@@ -167,15 +167,16 @@ docker compose up --build
 
 The multistage image runs as the non-root `node` user. Compose persists `/app/data` in a named volume and the image health check calls `/health`.
 
-### Supabase/PostgreSQL option
+### Neon/PostgreSQL option
 
-The application supports either SQLite or PostgreSQL. Create a Supabase project, click **Connect**, and use the **Shared Pooler session mode** connection string for an IPv4-only Render service. Add it as:
+The application supports either SQLite or PostgreSQL. In Neon, open the project, click **Connect**, and copy both the pooled and direct connection strings:
 
 ```env
-DATABASE_URL=postgres://postgres.<project-ref>:<password>@aws-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+DATABASE_URL=postgresql://user:<password>@ep-example-pooler.<region>.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://user:<password>@ep-example.<region>.aws.neon.tech/neondb?sslmode=require
 ```
 
-When `DATABASE_URL` is set, the service initializes PostgreSQL automatically and uses parameterized queries for task mappings and processed events. Do not use the Supabase anon or service-role API keys for this connection. Supabase documents session mode for persistent backend services and transaction mode for serverless workloads. See [Supabase database connections](https://supabase.com/docs/guides/database/connecting-to-postgres).
+When `DATABASE_URL` is set, the service initializes PostgreSQL automatically and uses parameterized queries for task mappings and processed events. The running service uses the pooled URL. `npm run db:migrate` prefers `DATABASE_URL_UNPOOLED`, because schema migrations and database dumps should use a direct connection. See [Neon connection pooling](https://neon.com/docs/connect/connection-pooling).
 
 To initialize the PostgreSQL schema without starting Slack or the webhook server, run:
 
