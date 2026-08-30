@@ -35,7 +35,7 @@ jobs:
             const match = body.match(/<!-- slack-agent-metadata\\s*([\\s\\S]*?)-->/);
             if (!match) throw new Error('Missing Slack agent metadata');
             const metadata = JSON.parse(match[1]);
-            if (metadata.repository !== process.env.REPOSITORY) throw new Error('Repository mismatch');
+            if (metadata.repository.toLowerCase() !== process.env.REPOSITORY.toLowerCase()) throw new Error('Repository mismatch');
             if (!/^[0-9a-f-]{36}$/i.test(metadata.taskId)) throw new Error('Invalid task ID');
             if (!['codex', 'gemini'].includes(process.env.PROVIDER || '')) throw new Error('CODING_AGENT_PROVIDER must be codex or gemini');
           "
@@ -105,7 +105,7 @@ jobs:
           sandbox: read-only
           safety-strategy: drop-sudo
           allow-bots: true
-          allow-bot-users: pankaj-slack-coding-agent[bot]
+          allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
             {
               "type": "object",
@@ -206,7 +206,7 @@ jobs:
         if: steps.planner.outputs.status == 'READY'
         env:
           REQUIRE_APPROVAL: ${{ vars.CODING_AGENT_REQUIRE_APPROVAL || 'false' }}
-          APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN || 'pankaj-slack-coding-agent[bot]' }}
+          APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           RUNNER_TEMP_DIR: ${{ runner.temp }}
         run: |
           node <<'NODE'
@@ -297,7 +297,7 @@ jobs:
           sandbox: workspace-write
           safety-strategy: drop-sudo
           allow-bots: true
-          allow-bot-users: pankaj-slack-coding-agent[bot]
+          allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
             {
               "type": "object",
@@ -590,7 +590,7 @@ jobs:
           sandbox: read-only
           safety-strategy: drop-sudo
           allow-bots: true
-          allow-bot-users: pankaj-slack-coding-agent[bot]
+          allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
             {
               "type": "object",
@@ -775,7 +775,7 @@ jobs:
           sandbox: workspace-write
           safety-strategy: drop-sudo
           allow-bots: true
-          allow-bot-users: pankaj-slack-coding-agent[bot]
+          allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
             {
               "type": "object",
@@ -1003,7 +1003,7 @@ jobs:
           sandbox: read-only
           safety-strategy: drop-sudo
           allow-bots: true
-          allow-bot-users: pankaj-slack-coding-agent[bot]
+          allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
             {
               "type": "object",
