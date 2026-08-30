@@ -114,6 +114,31 @@ describe('hackathon evaluation', () => {
     expect(() => parseRunManifest({ ...manifest, provider: 'unknown' })).toThrow();
   });
 
+  it('rejects credential-like evidence before report generation', () => {
+    expect(() =>
+      parseObservations([
+        passingObservation({
+          notes: 'accidentally captured sk-abcdefghijklmnopqrstuvwxyz',
+        }),
+      ]),
+    ).toThrow('Potential credential');
+  });
+
+  it('rejects unexpected stale evidence while scoring', () => {
+    const summary = evaluate(
+      [evaluationCase],
+      [
+        passingObservation({
+          checks: [
+            { command: 'npm test', passed: true, evidence: 'passed' },
+            { command: 'npm run stale', passed: true, evidence: 'not applicable' },
+          ],
+        }),
+      ],
+    );
+    expect(summary.cases[0]?.reasons).toContain('Unexpected check evidence: npm run stale');
+  });
+
   it('renders aggregate and per-case results as Markdown', () => {
     const report = renderMarkdownReport(
       manifest,

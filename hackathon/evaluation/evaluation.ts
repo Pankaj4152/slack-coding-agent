@@ -138,11 +138,14 @@ export function parseObservations(value: unknown): Observation[] {
     observations.map((item) => item.caseId),
     'observation case ID',
   );
+  assertNoSensitiveText(observations);
   return observations;
 }
 
 export function parseRunManifest(value: unknown): RunManifest {
-  return runManifestSchema.parse(value);
+  const manifest = runManifestSchema.parse(value);
+  assertNoSensitiveText(manifest);
+  return manifest;
 }
 
 export function parseEvaluationSummary(value: unknown): EvaluationSummary {
@@ -424,11 +427,21 @@ function scoreCase(evaluationCase: EvaluationCase, observation?: Observation): C
     else if (!evidence.passed) reasons.push(`Acceptance criterion failed: ${criterion}`);
     else if (!evidence.evidence.trim()) reasons.push(`Acceptance evidence is empty: ${criterion}`);
   }
+  for (const evidence of observation.acceptanceEvidence) {
+    if (!evaluationCase.acceptanceCriteria.includes(evidence.criterion)) {
+      reasons.push(`Unexpected acceptance evidence: ${evidence.criterion}`);
+    }
+  }
   for (const command of evaluationCase.requiredChecks) {
     const check = observation.checks.find((item) => item.command === command);
     if (!check) reasons.push(`Missing required check: ${command}`);
     else if (!check.passed) reasons.push(`Required check failed: ${command}`);
     else if (!check.evidence.trim()) reasons.push(`Required check evidence is empty: ${command}`);
+  }
+  for (const check of observation.checks) {
+    if (!evaluationCase.requiredChecks.includes(check.command)) {
+      reasons.push(`Unexpected check evidence: ${check.command}`);
+    }
   }
 
   return { caseId: evaluationCase.id, verified: reasons.length === 0, reasons };
@@ -438,6 +451,21 @@ function assertUnique(values: string[], label: string): void {
   const duplicates = values.filter((value, index) => values.indexOf(value) !== index);
   if (duplicates.length > 0)
     throw new Error(`Duplicate ${label}: ${[...new Set(duplicates)].join(', ')}`);
+}
+
+function assertNoSensitiveText(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  const patterns = [
+    /\bsk-[A-Za-z0-9_-]{8,}/,
+    /\b(?:github_pat_|gh[oprsu]_)[A-Za-z0-9_]{8,}/,
+    /\bxox[baprs]-[A-Za-z0-9-]{8,}/,
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+    /\b(?:postgres(?:ql)?|mysql):\/\/[^\s"@]+:[^\s"@]+@/i,
+    /\b(?:authorization|api[_-]?key)\s*[:=]\s*["']?[A-Za-z0-9_./+-]{12,}/i,
+  ];
+  if (patterns.some((pattern) => pattern.test(serialized))) {
+    throw new Error('Potential credential or private key detected in evaluation evidence');
+  }
 }
 
 function rate(numerator: number, denominator: number): number {
