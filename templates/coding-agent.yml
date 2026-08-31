@@ -196,6 +196,8 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           codex-home: ${{ runner.temp }}/probe-codex-home-planner
+          model: gpt-5.6-luna
+          effort: low
           prompt-file: .codex-task/planner-prompt.md
           output-file: .codex-task/planner-result.json
           sandbox: read-only
@@ -256,7 +258,7 @@ jobs:
           const fs = require('fs');
           const crypto = require('crypto');
           const childProcess = require('child_process');
-          const providerOutcome = process.env.RESTORED_PLAN === 'true' ? 'success' : process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          const providerOutcome = process.env.RESTORED_PLAN === 'true' ? 'success' : process.env.PROVIDER === 'gemini' ? (process.env.GEMINI_OUTCOME === 'success' ? 'success' : process.env.GEMINI_FALLBACK_OUTCOME) : process.env.CODEX_OUTCOME;
           let planner;
           try {
             planner = JSON.parse(fs.readFileSync('.codex-task/planner-result.json', 'utf8'));
@@ -424,6 +426,8 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           codex-home: ${{ runner.temp }}/probe-codex-home-coder
+          model: gpt-5.6-luna
+          effort: medium
           prompt-file: .codex-task/prompt.md
           output-file: .codex-task/result.json
           sandbox: workspace-write
@@ -522,7 +526,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           let result;
-          const agentOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          const agentOutcome = process.env.PROVIDER === 'gemini' ? (process.env.GEMINI_OUTCOME === 'success' ? 'success' : process.env.GEMINI_FALLBACK_OUTCOME) : process.env.CODEX_OUTCOME;
           fs.mkdirSync('.codex-task', { recursive: true });
           try {
             result = JSON.parse(fs.readFileSync('.codex-task/result.json', 'utf8'));
@@ -734,6 +738,8 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           codex-home: ${{ runner.temp }}/probe-codex-home-verifier
+          model: gpt-5.6-luna
+          effort: low
           prompt-file: .codex-task/verifier-prompt.md
           output-file: .codex-task/verifier-result.json
           sandbox: read-only
@@ -806,7 +812,7 @@ jobs:
           const childProcess = require('child_process');
           const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
           const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
-          const providerOutcome = process.env.PROVIDER === 'gemini' ? process.env.GEMINI_OUTCOME : process.env.CODEX_OUTCOME;
+          const providerOutcome = process.env.PROVIDER === 'gemini' ? (process.env.GEMINI_OUTCOME === 'success' ? 'success' : process.env.GEMINI_FALLBACK_OUTCOME) : process.env.CODEX_OUTCOME;
           let verifier;
           try {
             verifier = JSON.parse(fs.readFileSync('.codex-task/verifier-result.json', 'utf8'));
@@ -946,6 +952,8 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           codex-home: ${{ runner.temp }}/probe-codex-home-repair
+          model: gpt-5.6-luna
+          effort: medium
           prompt-file: .codex-task/repair-prompt.md
           output-file: .codex-task/repair-result.json
           sandbox: workspace-write
@@ -1201,6 +1209,8 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           codex-home: ${{ runner.temp }}/probe-codex-home-repair-verifier
+          model: gpt-5.6-luna
+          effort: low
           prompt-file: .codex-task/repair-verifier-prompt.md
           output-file: .codex-task/repair-verifier-result.json
           sandbox: read-only

@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 describe('coding agent workflow template', () => {
   const template = readFileSync('templates/coding-agent.yml', 'utf8').replace(/\r\n/g, '\n');
-  const activeWorkflow = readFileSync('.github/workflows/coding-agent.yml', 'utf8').replace(/\r\n/g, '\n');
+  const activeWorkflow = readFileSync('.github/workflows/coding-agent.yml', 'utf8').replace(
+    /\r\n/g,
+    '\n',
+  );
 
   it('keeps the active workflow synchronized with the installable template', () => {
     expect(activeWorkflow).toBe(template);
@@ -16,6 +19,9 @@ describe('coding agent workflow template', () => {
       5,
     );
     expect(new Set(template.match(/probe-codex-home-[a-z-]+/g)).size).toBe(5);
+    expect(template.match(/model: gpt-5\.6-luna/g)).toHaveLength(5);
+    expect(template.match(/effort: low/g)).toHaveLength(3);
+    expect(template.match(/effort: medium/g)).toHaveLength(2);
     expect(template).toContain('steps.codex.outputs.final-message');
     expect(template).toContain('Codex Action runtime or sandbox error');
     expect(template).toContain("if: env.AGENT_PROVIDER == 'gemini'");
@@ -32,7 +38,9 @@ describe('coding agent workflow template', () => {
       template.match(/GEMINI_ERROR: \$\{\{ steps\.[a-z_]+\.outputs\.error \}\}/g),
     ).toHaveLength(5);
     // Gemini model/quota/auth error patterns must appear in all normalize steps
-    expect(template.match(/invalid\.\*model\|model\.\*not\.\*found/g)!.length).toBeGreaterThanOrEqual(3);
+    expect(
+      template.match(/invalid\.\*model\|model\.\*not\.\*found/g)!.length,
+    ).toBeGreaterThanOrEqual(3);
   });
 
   it('fails fast with actionable target repository configuration diagnostics', () => {
@@ -65,9 +73,7 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("if: steps.planner.outputs.status == 'NEEDS_CLARIFICATION'");
     expect(template).toContain('<!-- agent-question -->');
     expect(template).toContain('APPROVED PLAN:');
-    expect(template).toContain(
-      "'\\n.gemini/\\ngemini-artifacts/\\ngha-creds-*.json\\n'",
-    );
+    expect(template).toContain("'\\n.gemini/\\ngemini-artifacts/\\ngha-creds-*.json\\n'");
     expect(template).toContain("['status', '--porcelain', '--', ':!.codex-task']");
     expect(template).toContain("console.error('Planner workspace changes:'");
   });
@@ -130,7 +136,7 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('pre-verifier-fingerprint.txt');
     expect(template).toContain("steps.final_verification.outputs.status == 'PASS'");
     // Verifier normalize must expose GEMINI_ERROR and classify it
-    expect(template).toContain("GEMINI_ERROR: ${{ steps.verifier_gemini.outputs.error }}");
+    expect(template).toContain('GEMINI_ERROR: ${{ steps.verifier_gemini.outputs.error }}');
     expect(template).toContain('verifier could not complete its review.');
   });
 
@@ -160,8 +166,8 @@ describe('coding agent workflow template', () => {
     expect(template).toContain("if: steps.verifier.outputs.status == 'NEEDS_FIX'");
     expect(template).toContain("steps.repair_result.outputs.status != 'NEEDS_CLARIFICATION'");
     // Repair normalize steps must expose GEMINI_ERROR and classify it
-    expect(template).toContain("GEMINI_ERROR: ${{ steps.repair_gemini.outputs.error }}");
-    expect(template).toContain("GEMINI_ERROR: ${{ steps.repair_verifier_gemini.outputs.error }}");
+    expect(template).toContain('GEMINI_ERROR: ${{ steps.repair_gemini.outputs.error }}');
+    expect(template).toContain('GEMINI_ERROR: ${{ steps.repair_verifier_gemini.outputs.error }}');
     expect(template).toContain('repair agent could not complete the bounded repair attempt.');
     expect(template).toContain('repair verifier could not complete its review.');
     // Report failure must also clean up the agent-pr-created label
