@@ -201,7 +201,7 @@ jobs:
           prompt-file: .codex-task/planner-prompt.md
           output-file: .codex-task/planner-result.json
           sandbox: read-only
-          safety-strategy: drop-sudo
+          safety-strategy: unsafe
           allow-bots: true
           allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
@@ -431,7 +431,7 @@ jobs:
           prompt-file: .codex-task/prompt.md
           output-file: .codex-task/result.json
           sandbox: workspace-write
-          safety-strategy: drop-sudo
+          safety-strategy: unsafe
           allow-bots: true
           allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
@@ -743,7 +743,7 @@ jobs:
           prompt-file: .codex-task/verifier-prompt.md
           output-file: .codex-task/verifier-result.json
           sandbox: read-only
-          safety-strategy: drop-sudo
+          safety-strategy: unsafe
           allow-bots: true
           allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
@@ -957,7 +957,7 @@ jobs:
           prompt-file: .codex-task/repair-prompt.md
           output-file: .codex-task/repair-result.json
           sandbox: workspace-write
-          safety-strategy: drop-sudo
+          safety-strategy: unsafe
           allow-bots: true
           allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
@@ -1214,7 +1214,7 @@ jobs:
           prompt-file: .codex-task/repair-verifier-prompt.md
           output-file: .codex-task/repair-verifier-result.json
           sandbox: read-only
-          safety-strategy: drop-sudo
+          safety-strategy: unsafe
           allow-bots: true
           allow-bot-users: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           output-schema: |
