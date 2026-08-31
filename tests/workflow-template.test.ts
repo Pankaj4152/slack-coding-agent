@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('coding agent workflow template', () => {
-  const template = readFileSync('templates/coding-agent.yml', 'utf8');
-  const activeWorkflow = readFileSync('.github/workflows/coding-agent.yml', 'utf8');
+  const template = readFileSync('templates/coding-agent.yml', 'utf8').replace(/\r\n/g, '\n');
+  const activeWorkflow = readFileSync('.github/workflows/coding-agent.yml', 'utf8').replace(/\r\n/g, '\n');
 
   it('keeps the active workflow synchronized with the installable template', () => {
     expect(activeWorkflow).toBe(template);
