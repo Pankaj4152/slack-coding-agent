@@ -4,8 +4,6 @@ Review every placeholder against evidence before pasting. Do not submit brackete
 
 ## Available live evidence
 
-One real representative demo is documented in [DEMO_EVIDENCE.md](./DEMO_EVIDENCE.md): a Slack request became GitHub issue #30, a focused implementation, and pull request #31 in approximately two minutes. This run used temporary fast-demo mode, so it is orchestration evidence rather than a full measured benchmark.
-
 ## Project name
 
 **PRobe - Evidence-Gated Coding Agent for Slack**
