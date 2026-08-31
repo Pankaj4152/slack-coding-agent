@@ -37,7 +37,12 @@ export async function replaceAgentLabels(
   add: string,
   remove: string[],
 ): Promise<void> {
-  await octokit.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [add] });
+  try {
+    await octokit.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [add] });
+  } catch (error: any) {
+    // 422 means the label is already applied — not an error.
+    if (error?.status !== 422) throw error;
+  }
   await Promise.all(
     remove.map(async (name) => {
       try {
