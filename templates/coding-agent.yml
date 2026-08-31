@@ -277,7 +277,7 @@ jobs:
             const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
             if (process.env.PROVIDER === 'gemini' && /not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
               planner.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
-            } else if (process.env.PROVIDER === 'gemini' && /resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+            } else if (process.env.PROVIDER === 'gemini' && /resource_exhausted|quota|rate limit|429|503|high demand|service_unavailable|unavailable/.test(geminiError)) {
               planner.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
             } else if (process.env.PROVIDER === 'gemini' && /api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
               planner.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
@@ -548,8 +548,8 @@ jobs:
             };
             if (process.env.PROVIDER === 'gemini') {
               const error = String(process.env.GEMINI_ERROR || '').toLowerCase();
-              if (/resource_exhausted|quota|rate limit|429/.test(error)) {
-                result.summary = 'Gemini API free-tier quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
+              if (/resource_exhausted|quota|rate limit|429|503|high demand|service_unavailable|unavailable/.test(error)) {
+                result.summary = 'Gemini API is rate limited or experiencing high demand (HTTP 503/429). Wait a moment and reply retry in Slack.';
               } else if (/api key|unauthenticated|permission_denied|401|403/.test(error)) {
                 result.summary = 'GEMINI_API_KEY is missing, invalid, or not permitted to use the selected model. Replace the GitHub Actions secret, then reply retry in Slack.';
               } else if (/invalid.*model|model.*not.*found|not.*supported|invalid_argument/.test(error)) {
@@ -828,7 +828,7 @@ jobs:
               const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
               if (/not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
                 verifier.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
-              } else if (/resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+              } else if (/resource_exhausted|quota|rate limit|429|503|high demand|service_unavailable|unavailable/.test(geminiError)) {
                 verifier.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
               } else if (/api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
                 verifier.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
@@ -1025,7 +1025,7 @@ jobs:
               const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
               if (/not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
                 result.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
-              } else if (/resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+              } else if (/resource_exhausted|quota|rate limit|429|503|high demand|service_unavailable|unavailable/.test(geminiError)) {
                 result.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
               } else if (/api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
                 result.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
@@ -1295,7 +1295,7 @@ jobs:
               const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
               if (/not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
                 verifier.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
-              } else if (/resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+              } else if (/resource_exhausted|quota|rate limit|429|503|high demand|service_unavailable|unavailable/.test(geminiError)) {
                 verifier.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
               } else if (/api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
                 verifier.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
