@@ -18,7 +18,7 @@ jobs:
   code:
     if: github.event.label.name == 'agent-ready'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       REPOSITORY: ${{ github.repository }}
@@ -238,7 +238,7 @@ jobs:
             Plan only. Do not edit repository files. Write the result to .codex-task/planner-result.json as valid JSON with exactly these fields: status, summary, acceptanceCriteria, implementationSteps, validationCommands, filesToInspect, risks, and question.
           settings: |
             {
-              "model": { "maxSessionTurns": 20 },
+              "model": { "maxSessionTurns": 8 },
               "telemetry": { "enabled": false }
             }
 
@@ -468,7 +468,7 @@ jobs:
             status (COMPLETED, NEEDS_CLARIFICATION, or FAILED), summary, question, validation (array of strings), risks, and noChangesRequired (boolean).
           settings: |
             {
-              "model": { "maxSessionTurns": 50 },
+              "model": { "maxSessionTurns": 16 },
               "telemetry": { "enabled": false }
             }
 
@@ -791,7 +791,7 @@ jobs:
             Verify only. Do not edit repository files. Write the result to .codex-task/verifier-result.json as valid JSON with exactly these fields: status, summary, criteria, checksReviewed, scopeIssues, risks, and confidence.
           settings: |
             {
-              "model": { "maxSessionTurns": 30 },
+              "model": { "maxSessionTurns": 10 },
               "telemetry": { "enabled": false }
             }
 
@@ -992,7 +992,7 @@ jobs:
             Repair only the reported failures. Do not commit, push, or open a pull request. Write .codex-task/repair-result.json using exactly: status, summary, question, validation, risks, and noChangesRequired.
           settings: |
             {
-              "model": { "maxSessionTurns": 40 },
+              "model": { "maxSessionTurns": 12 },
               "telemetry": { "enabled": false }
             }
 
@@ -1262,7 +1262,7 @@ jobs:
             Verify only. Do not edit repository files. Write .codex-task/repair-verifier-result.json using exactly: status, summary, criteria, checksReviewed, scopeIssues, risks, and confidence.
           settings: |
             {
-              "model": { "maxSessionTurns": 30 },
+              "model": { "maxSessionTurns": 10 },
               "telemetry": { "enabled": false }
             }
 
