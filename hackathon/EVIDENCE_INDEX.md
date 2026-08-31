@@ -2,6 +2,9 @@
 
 Use this index as the single navigation page when assembling the final HackerEarth submission. Items marked pending must be replaced with redacted live artifacts, not prose claims.
 
+- Submission-day execution plan: [`SUBMISSION_PLAN.md`](./SUBMISSION_PLAN.md)
+- Ready-to-paste form copy: [`SUBMISSION_FORM_COPY.md`](./SUBMISSION_FORM_COPY.md)
+
 ## Deliverable 1: solution code and improvement changelog
 
 - Product introduction and intended user: [`../README.md`](../README.md)
