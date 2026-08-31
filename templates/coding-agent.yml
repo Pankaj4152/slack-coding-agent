@@ -146,7 +146,7 @@ jobs:
           ${comments.map((comment) => `By ${comment.user?.login || 'unknown'}:\n${comment.body || ''}`).join('\n\n---\n\n')}
           `;
           fs.writeFileSync('.codex-task/planner-prompt.md', prompt, { mode: 0o600 });
-          fs.appendFileSync('.git/info/exclude', '\n.codex-task/\n.gemini/\ngemini-artifacts/\ngha-creds-*.json\n');
+          fs.appendFileSync('.git/info/exclude', '\n.gemini/\ngemini-artifacts/\ngha-creds-*.json\n');
           NODE
 
       - name: Restore an approved plan snapshot
@@ -291,7 +291,7 @@ jobs:
           if (arrays.some((key) => !Array.isArray(planner[key]))) planner.status = 'FAILED';
           if (planner.status === 'READY' && (!planner.acceptanceCriteria.length || !planner.implementationSteps.length)) planner.status = 'FAILED';
           if (planner.status === 'NEEDS_CLARIFICATION' && !String(planner.question || '').trim()) planner.status = 'FAILED';
-          const changes = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
+          const changes = childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }).trim();
           if (changes) {
             console.error('Planner workspace changes:', JSON.stringify(changes.split('\n').slice(0, 20)));
             planner.status = 'FAILED';
@@ -564,7 +564,7 @@ jobs:
           if (result.status === 'NEEDS_CLARIFICATION' && !String(result.question || '').trim()) result.status = 'FAILED';
           let changes = '';
           try {
-            changes = require('child_process').execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
+            changes = require('child_process').execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }).trim();
           } catch {}
           if (result.status === 'COMPLETED' && !changes && !result.noChangesRequired) {
             result.status = 'FAILED';
@@ -615,9 +615,9 @@ jobs:
           const childProcess = require('child_process');
           childProcess.execFileSync('git', ['add', '-N', '--', '.']);
           const fingerprint = () => crypto.createHash('sha256')
-            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update(childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }))
             .update('\0')
-            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
           const beforeFingerprint = fingerprint();
           const configured = String(process.env.VALIDATION_COMMANDS_JSON || '').trim();
@@ -685,9 +685,9 @@ jobs:
           const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
           const coding = JSON.parse(fs.readFileSync('.codex-task/normalized-result.json', 'utf8'));
           const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
-          const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
-          const stat = childProcess.execFileSync('git', ['diff', '--stat'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
-          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          const status = childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' });
+          const stat = childProcess.execFileSync('git', ['diff', '--stat', '--', ':!.codex-task'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40', '--', ':!.codex-task'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
           const diff = rawDiff.length > 120000 ? `${rawDiff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : rawDiff;
           const prompt = `You are independently verifying a coding-agent change. Do not edit repository files.
 
@@ -720,7 +720,7 @@ jobs:
           const fingerprint = crypto.createHash('sha256')
             .update(status)
             .update('\0')
-            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
           fs.writeFileSync('.codex-task/pre-verifier-fingerprint.txt', fingerprint);
           fs.writeFileSync('.codex-task/verifier-prompt.md', prompt, { mode: 0o600 });
@@ -853,9 +853,9 @@ jobs:
           }
           const beforeFingerprint = fs.readFileSync('.codex-task/pre-verifier-fingerprint.txt', 'utf8');
           const afterFingerprint = crypto.createHash('sha256')
-            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update(childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }))
             .update('\0')
-            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
           if (beforeFingerprint !== afterFingerprint) {
             verifier.status = 'FAILED';
@@ -897,8 +897,8 @@ jobs:
           const coding = JSON.parse(fs.readFileSync('.codex-task/normalized-result.json', 'utf8'));
           const checks = JSON.parse(fs.readFileSync('.codex-task/deterministic-validation.json', 'utf8'));
           const verifier = JSON.parse(fs.readFileSync('.codex-task/normalized-verifier-result.json', 'utf8'));
-          const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
-          const diff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=30'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          const status = childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' });
+          const diff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=30', '--', ':!.codex-task'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
           const boundedDiff = diff.length > 120000 ? `${diff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : diff;
           const fingerprint = crypto.createHash('sha256')
             .update(status)
@@ -1038,9 +1038,9 @@ jobs:
           if (!Array.isArray(result.validation)) result.status = 'FAILED';
           if (result.status === 'NEEDS_CLARIFICATION' && !String(result.question || '').trim()) result.status = 'FAILED';
           const fingerprint = crypto.createHash('sha256')
-            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update(childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }))
             .update('\0')
-            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
           const beforeFingerprint = fs.readFileSync('.codex-task/pre-repair-fingerprint.txt', 'utf8');
           if (result.status === 'COMPLETED' && fingerprint === beforeFingerprint) {
@@ -1084,9 +1084,9 @@ jobs:
           const childProcess = require('child_process');
           childProcess.execFileSync('git', ['add', '-N', '--', '.']);
           const fingerprint = () => crypto.createHash('sha256')
-            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update(childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }))
             .update('\0')
-            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
           const beforeFingerprint = fingerprint();
           const configured = String(process.env.VALIDATION_COMMANDS_JSON || '').trim();
@@ -1153,9 +1153,9 @@ jobs:
           const planner = JSON.parse(fs.readFileSync('.codex-task/normalized-planner-result.json', 'utf8'));
           const repair = JSON.parse(fs.readFileSync('.codex-task/normalized-repair-result.json', 'utf8'));
           const checks = JSON.parse(fs.readFileSync('.codex-task/repair-deterministic-validation.json', 'utf8'));
-          const status = childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
-          const stat = childProcess.execFileSync('git', ['diff', '--stat'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
-          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          const status = childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' });
+          const stat = childProcess.execFileSync('git', ['diff', '--stat', '--', ':!.codex-task'], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+          const rawDiff = childProcess.execFileSync('git', ['diff', '--no-ext-diff', '--unified=40', '--', ':!.codex-task'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
           const diff = rawDiff.length > 120000 ? `${rawDiff.slice(0, 120000)}\n\n[DIFF TRUNCATED]` : rawDiff;
           const prompt = `You are independently verifying code after the one allowed repair attempt. Do not edit repository files.
 
@@ -1320,9 +1320,9 @@ jobs:
           }
           const beforeFingerprint = fs.readFileSync('.codex-task/pre-repair-verifier-fingerprint.txt', 'utf8');
           const afterFingerprint = crypto.createHash('sha256')
-            .update(childProcess.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }))
+            .update(childProcess.execFileSync('git', ['status', '--porcelain', '--', ':!.codex-task'], { encoding: 'utf8' }))
             .update('\0')
-            .update(childProcess.execFileSync('git', ['diff', '--binary'], { maxBuffer: 16 * 1024 * 1024 }))
+            .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
           if (beforeFingerprint !== afterFingerprint) {
             verifier.status = 'FAILED';

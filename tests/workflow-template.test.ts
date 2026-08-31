@@ -66,9 +66,9 @@ describe('coding agent workflow template', () => {
     expect(template).toContain('<!-- agent-question -->');
     expect(template).toContain('APPROVED PLAN:');
     expect(template).toContain(
-      "'\\n.codex-task/\\n.gemini/\\ngemini-artifacts/\\ngha-creds-*.json\\n'",
+      "'\\n.gemini/\\ngemini-artifacts/\\ngha-creds-*.json\\n'",
     );
-    expect(template).toContain("['status', '--porcelain']");
+    expect(template).toContain("['status', '--porcelain', '--', ':!.codex-task']");
     expect(template).toContain("console.error('Planner workspace changes:'");
   });
 
