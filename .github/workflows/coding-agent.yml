@@ -1050,8 +1050,14 @@ jobs:
             .update('\0')
             .update(childProcess.execFileSync('git', ['diff', '--binary', '--', ':!.codex-task'], { maxBuffer: 16 * 1024 * 1024 }))
             .digest('hex');
-          const beforeFingerprint = fs.readFileSync('.codex-task/pre-repair-fingerprint.txt', 'utf8');
-          if (result.status === 'COMPLETED' && fingerprint === beforeFingerprint) {
+          const beforeFingerprintPath = '.codex-task/pre-repair-fingerprint.txt';
+          const beforeFingerprint = fs.existsSync(beforeFingerprintPath)
+            ? fs.readFileSync(beforeFingerprintPath, 'utf8')
+            : '';
+          if (!beforeFingerprint) {
+            result.status = 'FAILED';
+            result.summary = 'Repair state was incomplete: the pre-repair fingerprint was not recorded, so no repair result was accepted.';
+          } else if (result.status === 'COMPLETED' && fingerprint === beforeFingerprint) {
             result.status = 'FAILED';
             result.summary = 'The repair agent reported completion but did not change the implementation.';
           }
