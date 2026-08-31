@@ -219,7 +219,7 @@ jobs:
           GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-planner
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: gemini-3.1-flash-lite
+          gemini_model: gemini-2.5-flash
           prompt: |
             @.codex-task/planner-prompt.md
 
@@ -271,6 +271,8 @@ jobs:
               planner.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
             } else if (process.env.PROVIDER === 'gemini' && /api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
               planner.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
+            } else if (process.env.PROVIDER === 'gemini' && /invalid.*model|model.*not.*found|not.*supported|invalid_argument/.test(geminiError)) {
+              planner.summary = 'The Gemini model name in the workflow is invalid or not available. Update the gemini_model field in the workflow to a supported model name (e.g. gemini-2.5-flash), then reply retry in Slack.';
             } else {
               planner.summary = `The ${process.env.PROVIDER || 'coding'} planner could not complete the planning pass. Check the planner step for its provider error.`;
             }
@@ -443,7 +445,7 @@ jobs:
           GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-coder
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: gemini-3.1-flash-lite
+          gemini_model: gemini-2.5-flash
           prompt: |
             @.codex-task/prompt.md
 
@@ -518,9 +520,13 @@ jobs:
             try {
               result = JSON.parse(String(process.env.CODEX_MESSAGE || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
             } catch {
-              result = process.env.PROVIDER === 'gemini' && agentOutcome === 'success'
-                ? { status: 'COMPLETED', summary: String(process.env.GEMINI_SUMMARY || 'Gemini completed the task.'), question: '', validation: [], risks: '', noChangesRequired: false }
-                : { status: 'FAILED', summary: 'The selected coding agent did not return a valid structured result.', question: '', validation: [], risks: '', noChangesRequired: false };
+              try {
+                result = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              } catch {
+                result = process.env.PROVIDER === 'gemini' && agentOutcome === 'success'
+                  ? { status: 'COMPLETED', summary: String(process.env.GEMINI_SUMMARY || 'Gemini completed the task.'), question: '', validation: [], risks: '', noChangesRequired: false }
+                  : { status: 'FAILED', summary: 'The selected coding agent did not return a valid structured result.', question: '', validation: [], risks: '', noChangesRequired: false };
+              }
             }
           }
           if (agentOutcome !== 'success') {
@@ -536,6 +542,8 @@ jobs:
                 result.summary = 'Gemini API free-tier quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
               } else if (/api key|unauthenticated|permission_denied|401|403/.test(error)) {
                 result.summary = 'GEMINI_API_KEY is missing, invalid, or not permitted to use the selected model. Replace the GitHub Actions secret, then reply retry in Slack.';
+              } else if (/invalid.*model|model.*not.*found|not.*supported|invalid_argument/.test(error)) {
+                result.summary = 'The Gemini model name in the workflow is invalid or not available. Update the gemini_model field in the workflow to a supported model name (e.g. gemini-2.5-flash), then reply retry in Slack.';
               }
             } else {
               result.summary = diagnoses[process.env.API_DIAGNOSIS] || (process.env.API_DIAGNOSIS === 'api_available'
@@ -760,7 +768,7 @@ jobs:
           GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-verifier
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: gemini-3.1-flash-lite
+          gemini_model: gemini-2.5-flash
           prompt: |
             @.codex-task/verifier-prompt.md
 
@@ -777,6 +785,8 @@ jobs:
         env:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.verifier_codex.outcome }}
+          CODEX_MESSAGE: ${{ steps.verifier_codex.outputs.final-message }}
+          GEMINI_ERROR: ${{ steps.verifier_gemini.outputs.error }}
           GEMINI_OUTCOME: ${{ steps.verifier_gemini.outcome }}
           GEMINI_SUMMARY: ${{ steps.verifier_gemini.outputs.summary }}
         run: |
@@ -792,14 +802,30 @@ jobs:
             verifier = JSON.parse(fs.readFileSync('.codex-task/verifier-result.json', 'utf8'));
           } catch {
             try {
-              verifier = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              verifier = JSON.parse(String(process.env.CODEX_MESSAGE || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
             } catch {
-              verifier = { status: 'FAILED', summary: 'The verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+              try {
+                verifier = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              } catch {
+                verifier = { status: 'FAILED', summary: 'The verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+              }
             }
           }
           if (providerOutcome !== 'success') {
             verifier.status = 'FAILED';
             verifier.summary = `The ${process.env.PROVIDER || 'coding'} verifier could not complete its review.`;
+            if (process.env.PROVIDER === 'gemini') {
+              const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
+              if (/not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
+                verifier.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
+              } else if (/resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+                verifier.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
+              } else if (/api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
+                verifier.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
+              } else if (/invalid.*model|model.*not.*found|not.*supported|invalid_argument/.test(geminiError)) {
+                verifier.summary = 'The Gemini model name in the workflow is invalid or not available. Update the gemini_model field in the workflow to a supported model name (e.g. gemini-2.5-flash), then reply retry in Slack.';
+              }
+            }
           }
           if (!['PASS', 'NEEDS_FIX', 'FAILED'].includes(verifier.status)) verifier.status = 'FAILED';
           if (!Array.isArray(verifier.criteria) || !Array.isArray(verifier.checksReviewed) || !Array.isArray(verifier.scopeIssues) || !Array.isArray(verifier.risks)) verifier.status = 'FAILED';
@@ -941,7 +967,7 @@ jobs:
           GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-repair
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: gemini-3.1-flash-lite
+          gemini_model: gemini-2.5-flash
           prompt: |
             @.codex-task/repair-prompt.md
 
@@ -958,6 +984,8 @@ jobs:
         env:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.repair_codex.outcome }}
+          CODEX_MESSAGE: ${{ steps.repair_codex.outputs.final-message }}
+          GEMINI_ERROR: ${{ steps.repair_gemini.outputs.error }}
           GEMINI_OUTCOME: ${{ steps.repair_gemini.outcome }}
           GEMINI_SUMMARY: ${{ steps.repair_gemini.outputs.summary }}
         run: |
@@ -971,14 +999,30 @@ jobs:
             result = JSON.parse(fs.readFileSync('.codex-task/repair-result.json', 'utf8'));
           } catch {
             try {
-              result = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              result = JSON.parse(String(process.env.CODEX_MESSAGE || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
             } catch {
-              result = { status: 'FAILED', summary: 'The repair agent did not return valid structured output.', question: '', validation: [], risks: '', noChangesRequired: false };
+              try {
+                result = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              } catch {
+                result = { status: 'FAILED', summary: 'The repair agent did not return valid structured output.', question: '', validation: [], risks: '', noChangesRequired: false };
+              }
             }
           }
           if (providerOutcome !== 'success') {
             result.status = 'FAILED';
             result.summary = `The ${process.env.PROVIDER || 'coding'} repair agent could not complete the bounded repair attempt.`;
+            if (process.env.PROVIDER === 'gemini') {
+              const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
+              if (/not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
+                result.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
+              } else if (/resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+                result.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
+              } else if (/api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
+                result.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
+              } else if (/invalid.*model|model.*not.*found|not.*supported|invalid_argument/.test(geminiError)) {
+                result.summary = 'The Gemini model name in the workflow is invalid or not available. Update the gemini_model field in the workflow to a supported model name (e.g. gemini-2.5-flash), then reply retry in Slack.';
+              }
+            }
           }
           if (!['COMPLETED', 'NEEDS_CLARIFICATION', 'FAILED'].includes(result.status)) result.status = 'FAILED';
           if (!Array.isArray(result.validation)) result.status = 'FAILED';
@@ -1191,7 +1235,7 @@ jobs:
           GEMINI_CLI_HOME: ${{ runner.temp }}/probe-gemini-home-repair-verifier
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: gemini-3.1-flash-lite
+          gemini_model: gemini-2.5-flash
           prompt: |
             @.codex-task/repair-verifier-prompt.md
 
@@ -1208,6 +1252,8 @@ jobs:
         env:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.repair_verifier_codex.outcome }}
+          CODEX_MESSAGE: ${{ steps.repair_verifier_codex.outputs.final-message }}
+          GEMINI_ERROR: ${{ steps.repair_verifier_gemini.outputs.error }}
           GEMINI_OUTCOME: ${{ steps.repair_verifier_gemini.outcome }}
           GEMINI_SUMMARY: ${{ steps.repair_verifier_gemini.outputs.summary }}
         run: |
@@ -1223,14 +1269,30 @@ jobs:
             verifier = JSON.parse(fs.readFileSync('.codex-task/repair-verifier-result.json', 'utf8'));
           } catch {
             try {
-              verifier = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              verifier = JSON.parse(String(process.env.CODEX_MESSAGE || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
             } catch {
-              verifier = { status: 'FAILED', summary: 'The repair verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+              try {
+                verifier = JSON.parse(String(process.env.GEMINI_SUMMARY || '').replace(/^```(?:json)?\s*|\s*```$/g, ''));
+              } catch {
+                verifier = { status: 'FAILED', summary: 'The repair verifier did not return valid structured output.', criteria: [], checksReviewed: [], scopeIssues: [], risks: [], confidence: 0 };
+              }
             }
           }
           if (providerOutcome !== 'success') {
             verifier.status = 'FAILED';
             verifier.summary = `The ${process.env.PROVIDER || 'coding'} repair verifier could not complete its review.`;
+            if (process.env.PROVIDER === 'gemini') {
+              const geminiError = String(process.env.GEMINI_ERROR || '').toLowerCase();
+              if (/not running in a trusted directory|fataluntrustedworkspace|trust_workspace/.test(geminiError)) {
+                verifier.summary = 'Gemini CLI rejected the GitHub Actions checkout as untrusted. Update the installed workflow to set GEMINI_CLI_TRUST_WORKSPACE=true on Gemini steps, then reply retry in Slack.';
+              } else if (/resource_exhausted|quota|rate limit|429/.test(geminiError)) {
+                verifier.summary = 'Gemini API quota is exhausted or rate limited. Wait for the quota window to reset, then reply retry in Slack.';
+              } else if (/api key|unauthenticated|permission_denied|401|403/.test(geminiError)) {
+                verifier.summary = 'GEMINI_API_KEY is invalid or not permitted to use the selected model. Replace the target repository Actions secret, then reply retry in Slack.';
+              } else if (/invalid.*model|model.*not.*found|not.*supported|invalid_argument/.test(geminiError)) {
+                verifier.summary = 'The Gemini model name in the workflow is invalid or not available. Update the gemini_model field in the workflow to a supported model name (e.g. gemini-2.5-flash), then reply retry in Slack.';
+              }
+            }
           }
           if (!['PASS', 'NEEDS_FIX', 'FAILED'].includes(verifier.status)) verifier.status = 'FAILED';
           if (!Array.isArray(verifier.criteria) || !Array.isArray(verifier.checksReviewed) || !Array.isArray(verifier.scopeIssues) || !Array.isArray(verifier.risks)) verifier.status = 'FAILED';
@@ -1489,3 +1551,4 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --add-label "agent-failed"
           gh api --method DELETE "repos/$REPOSITORY/issues/$ISSUE_NUMBER/labels/agent-working" >/dev/null 2>&1 || true
+          gh api --method DELETE "repos/$REPOSITORY/issues/$ISSUE_NUMBER/labels/agent-pr-created" >/dev/null 2>&1 || true
