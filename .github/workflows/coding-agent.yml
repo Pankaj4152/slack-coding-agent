@@ -23,6 +23,7 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       REPOSITORY: ${{ github.repository }}
       AGENT_PROVIDER: ${{ vars.CODING_AGENT_PROVIDER || 'codex' }}
+      DEMO_FAST_MODE: ${{ vars.CODING_AGENT_DEMO_FAST_MODE || 'false' }}
     steps:
       - name: Validate agent issue
         id: validate
@@ -874,7 +875,7 @@ jobs:
 
       - name: Check cancellation before repair
         id: repair_cancel
-        if: steps.verifier.outputs.status == 'NEEDS_FIX'
+        if: steps.verifier.outputs.status == 'NEEDS_FIX' && env.DEMO_FAST_MODE != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -885,7 +886,7 @@ jobs:
           fi
 
       - name: Report bounded repair attempt
-        if: steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        if: steps.verifier.outputs.status == 'NEEDS_FIX' && env.DEMO_FAST_MODE != 'true' && steps.repair_cancel.outputs.cancelled != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -893,7 +894,7 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
 
       - name: Build repair prompt
-        if: steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        if: steps.verifier.outputs.status == 'NEEDS_FIX' && env.DEMO_FAST_MODE != 'true' && steps.repair_cancel.outputs.cancelled != 'true'
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -946,7 +947,7 @@ jobs:
 
       - name: Run Codex repair
         id: repair_codex
-        if: env.AGENT_PROVIDER == 'codex' && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        if: env.AGENT_PROVIDER == 'codex' && steps.verifier.outputs.status == 'NEEDS_FIX' && env.DEMO_FAST_MODE != 'true' && steps.repair_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: openai/codex-action@v1
         with:
@@ -977,7 +978,7 @@ jobs:
 
       - name: Run Gemini repair
         id: repair_gemini
-        if: env.AGENT_PROVIDER == 'gemini' && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        if: env.AGENT_PROVIDER == 'gemini' && steps.verifier.outputs.status == 'NEEDS_FIX' && env.DEMO_FAST_MODE != 'true' && steps.repair_cancel.outputs.cancelled != 'true'
         continue-on-error: true
         uses: google-github-actions/run-gemini-cli@v0
         env:
@@ -998,7 +999,7 @@ jobs:
 
       - name: Normalize repair result
         id: repair_result
-        if: always() && steps.verifier.outputs.status == 'NEEDS_FIX' && steps.repair_cancel.outputs.cancelled != 'true'
+        if: always() && steps.verifier.outputs.status == 'NEEDS_FIX' && env.DEMO_FAST_MODE != 'true' && steps.repair_cancel.outputs.cancelled != 'true'
         env:
           PROVIDER: ${{ env.AGENT_PROVIDER }}
           CODEX_OUTCOME: ${{ steps.repair_codex.outcome }}
