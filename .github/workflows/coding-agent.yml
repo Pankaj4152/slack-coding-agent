@@ -28,7 +28,9 @@ jobs:
         id: validate
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
-          PROVIDER: ${{ vars.CODING_AGENT_PROVIDER || 'codex' }}
+          RAW_PROVIDER: ${{ vars.CODING_AGENT_PROVIDER }}
+          OPENAI_KEY_PRESENT: ${{ secrets.OPENAI_API_KEY != '' }}
+          GEMINI_KEY_PRESENT: ${{ secrets.GEMINI_API_KEY != '' }}
         run: |
           node -e "
             const body = process.env.ISSUE_BODY || '';
@@ -37,7 +39,15 @@ jobs:
             const metadata = JSON.parse(match[1]);
             if (metadata.repository.toLowerCase() !== process.env.REPOSITORY.toLowerCase()) throw new Error('Repository mismatch');
             if (!/^[0-9a-f-]{36}$/i.test(metadata.taskId)) throw new Error('Invalid task ID');
-            if (!['codex', 'gemini'].includes(process.env.PROVIDER || '')) throw new Error('CODING_AGENT_PROVIDER must be codex or gemini');
+            let provider = String(process.env.RAW_PROVIDER || '').trim().toLowerCase();
+            if (!provider) {
+              if (process.env.GEMINI_KEY_PRESENT === 'true') provider = 'gemini';
+              else if (process.env.OPENAI_KEY_PRESENT === 'true') provider = 'codex';
+              else provider = 'gemini';
+            }
+            if (!['codex', 'gemini'].includes(provider)) throw new Error('CODING_AGENT_PROVIDER must be codex or gemini');
+            const fs = require('fs');
+            fs.appendFileSync(process.env.GITHUB_ENV, \`AGENT_PROVIDER=\${provider}\\n\`);
           "
 
       - uses: actions/checkout@v5
@@ -48,7 +58,7 @@ jobs:
       - name: Validate target repository configuration
         id: configuration
         env:
-          PROVIDER: ${{ vars.CODING_AGENT_PROVIDER || 'codex' }}
+          PROVIDER: ${{ env.AGENT_PROVIDER }}
           REQUIRE_APPROVAL: ${{ vars.CODING_AGENT_REQUIRE_APPROVAL || 'false' }}
           APPROVAL_BOT_LOGIN: ${{ vars.CODING_AGENT_APPROVAL_BOT_LOGIN }}
           VALIDATION_COMMANDS: ${{ vars.CODING_AGENT_VALIDATION_COMMANDS_JSON }}
@@ -58,7 +68,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const errors = [];
-          const provider = process.env.PROVIDER || 'codex';
+          const provider = String(process.env.PROVIDER || '').trim().toLowerCase();
           if (!['codex', 'gemini'].includes(provider)) {
             errors.push('Set Actions variable CODING_AGENT_PROVIDER to either codex or gemini.');
           }
