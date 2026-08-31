@@ -33,6 +33,8 @@ const requiredFiles = [
   'hackathon/JUDGING_MAP.md',
   'hackathon/EVIDENCE_INDEX.md',
   'hackathon/SUBMISSION_CHECKLIST.md',
+  'hackathon/SUBMISSION_PLAN.md',
+  'hackathon/SUBMISSION_FORM_COPY.md',
   'hackathon/CLEAN_ENVIRONMENT_REHEARSAL.md',
   'hackathon/evaluation/cases.json',
   'hackathon/evaluation/LIVE_RUN_WORKSHEET.md',
