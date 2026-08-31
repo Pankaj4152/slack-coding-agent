@@ -178,6 +178,13 @@ export class PostgresTaskRepository implements TaskStore {
     );
     return result.rowCount === 1;
   }
+
+  async releaseEvent(eventId: string, source: 'slack' | 'github'): Promise<void> {
+    await this.pool.query('DELETE FROM processed_events WHERE event_id = $1 AND source = $2', [
+      eventId,
+      source,
+    ]);
+  }
 }
 
 function mapRow(row: TaskRow | undefined): Task | undefined {

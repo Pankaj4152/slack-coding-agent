@@ -16,10 +16,15 @@ export class GithubWebhookHandler {
 
   async handle(eventName: string, deliveryId: string, payload: any): Promise<void> {
     if (!(await this.tasks.claimEvent(deliveryId, 'github'))) return;
-    if (eventName === 'issue_comment' && payload.action === 'created') {
-      await this.handleIssueComment(payload);
-    } else if (eventName === 'pull_request' && payload.action === 'opened') {
-      await this.handlePullRequest(payload);
+    try {
+      if (eventName === 'issue_comment' && payload.action === 'created') {
+        await this.handleIssueComment(payload);
+      } else if (eventName === 'pull_request' && payload.action === 'opened') {
+        await this.handlePullRequest(payload);
+      }
+    } catch (error) {
+      await this.tasks.releaseEvent(deliveryId, 'github');
+      throw error;
     }
   }
 

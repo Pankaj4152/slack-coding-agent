@@ -17,6 +17,7 @@ export interface TaskStore {
   updateStatus(id: string, status: TaskStatus, questionCommentId?: number): Promise<Task>;
   transitionStatus(id: string, from: TaskStatus, to: TaskStatus): Promise<boolean>;
   claimEvent(eventId: string, source: 'slack' | 'github'): Promise<boolean>;
+  releaseEvent(eventId: string, source: 'slack' | 'github'): Promise<void>;
 }
 
 type TaskRow = {
@@ -136,6 +137,12 @@ export class TaskRepository implements TaskStore {
       )
       .run(eventId, source, new Date().toISOString());
     return result.changes === 1;
+  }
+
+  async releaseEvent(eventId: string, source: 'slack' | 'github'): Promise<void> {
+    this.db
+      .prepare('DELETE FROM processed_events WHERE event_id = ? AND source = ?')
+      .run(eventId, source);
   }
 }
 
