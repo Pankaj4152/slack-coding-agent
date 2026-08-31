@@ -36,6 +36,10 @@ Use this index as the single navigation page when assembling the final HackerEar
 - Recording plan and timing: [`VIDEO_SCRIPT.md`](./VIDEO_SCRIPT.md)
 - Pending: final video URL, duration, captions, and access verification.
 
+## Representative live demo
+
+- [One real Slack-to-PR demo](./DEMO_EVIDENCE.md), including the request, issue, Actions run, PR, timing, provider, and fast-mode limitation.
+
 ## Deliverable 4: agent trajectories
 
 - Capture specification: [`AGENT_TRAJECTORIES.md`](./AGENT_TRAJECTORIES.md)
